@@ -14,6 +14,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowInsets;
 import android.view.WindowInsetsController;
 import android.widget.FrameLayout;
@@ -51,9 +52,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // Configurar pantalla completa con la API moderna de Android
-        if (get someWindow = getWindow(); someWindow != null) {
-            WindowInsetsController controller = someWindow.getInsetsController();
+        // CORREGIDO: Configuración de pantalla completa con la API moderna de Android libre de errores
+        Window currentWindow = getWindow();
+        if (currentWindow != null) {
+            WindowInsetsController controller = currentWindow.getInsetsController();
             if (controller != null) {
                 controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
                 controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
@@ -121,7 +123,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             socket = new Socket(PC_IP, 8888);
             videoStream = socket.getInputStream();
             commandStream = socket.getOutputStream();
-            byte[] sizeBuffer = new byte[4]; // CORREGIDO: Declaración de tamaño fija
+            byte[] sizeBuffer = new byte[4];
             while (isRunning) {
                 int bytesRead = videoStream.read(sizeBuffer, 0, 4);
                 if (bytesRead == -1) break;
@@ -231,7 +233,7 @@ class DPadView extends View {
 class ActionButtonsView extends View {
     private MainActivity act;
     private Paint pBtn, pText;
-    private float[][] bPos; // CORREGIDO: Tipo de inicialización segura
+    private float[][] bPos; 
     private String[] tags = {"X", "Y", "B"};
     private float radius;
     private int pressedIdx = -1;
@@ -251,7 +253,7 @@ class ActionButtonsView extends View {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         radius = act.dp(36);
-        bPos = new float[3][2]; // CORREGIDO: Reserva de memoria de matriz bidimensional
+        bPos = new float[3][2]; 
         bPos[0] = new float[]{radius, h / 2f};              // X (Izquierda)
         bPos[1] = new float[]{w / 2f, radius};              // Y (Arriba)
         bPos[2] = new float[]{w - radius, h / 2f};          // B (Derecha)
@@ -403,7 +405,7 @@ class DualRadialMenuView extends View {
         optsInferior.add("Mazmorras");  keysInferior.add('L');
         optsInferior.add("BGs");        keysInferior.add('H');
 
-        // Menú Centro Arriba (Utilidades Desacopladas)
+        // Menú Centro Arriba (Utilidades Desacopladas de Habilidades)
         optsSuperior.add("Saltar");     keysSuperior.add('J');
         optsSuperior.add("Montura");    keysSuperior.add('M');
         optsSuperior.add("Poción");     keysSuperior.add('P');
@@ -472,7 +474,7 @@ class DualRadialMenuView extends View {
         if (!activo) return;
 
         canvas.drawCircle(mX, mY, act.dp(25), pBase);
-List list = esMenuSuperior ? optsSuperior : optsInferior;
+        List<String> list = esMenuSuperior ? optsSuperior : optsInferior;
 float step = (float) (Math.PI * 2 / list.size());
 float rMenu = act.dp(100);
 for (int i = 0; i < list.size(); i++) {
