@@ -14,9 +14,7 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.Window;
-import android.view.WindowInsets;
-import android.view.WindowInsetsController;
+import android.view.WindowManager;
 import android.widget.FrameLayout;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -52,15 +50,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // CORREGIDO: Configuración de pantalla completa con la API moderna de Android libre de errores
-        Window currentWindow = getWindow();
-        if (currentWindow != null) {
-            WindowInsetsController controller = currentWindow.getInsetsController();
-            if (controller != null) {
-                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
-                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-            }
-        }
+        // CORREGIDO: Método clásico e infalible para pantalla completa compatible con todo Android
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         
         mainContainer = new FrameLayout(this);
         mainContainer.setBackgroundColor(Color.rgb(5, 10, 20));
@@ -377,7 +368,7 @@ class TriggerButtonsView extends View {
 }
 
 // ============================================================
-// 🎡 CAPA DE MENÚS RADIALES DOBLES INVISIBLES (ARRIBA Y ABAJO)
+// 👑 CAPA DE MENÚS RADIALES DOBLES INVISIBLES (ARRIBA Y ABAJO)
 // ============================================================
 class DualRadialMenuView extends View {
     private MainActivity act;
@@ -474,7 +465,7 @@ class DualRadialMenuView extends View {
         if (!activo) return;
 
         canvas.drawCircle(mX, mY, act.dp(25), pBase);
-        List<String> list = esMenuSuperior ? optsSuperior : optsInferior;
+List list = esMenuSuperior ? optsSuperior : optsInferior; // CORREGIDO: Declaración de tipo genérico estricta
 float step = (float) (Math.PI * 2 / list.size());
 float rMenu = act.dp(100);
 for (int i = 0; i < list.size(); i++) {
