@@ -7,6 +7,7 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -15,9 +16,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
-import android.widget.Button;
 import android.widget.FrameLayout;
-import android.widget.GridLayout;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.Socket;
@@ -36,22 +35,17 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private OutputStream commandStream;
     private boolean isRunning = false;
 
-    // --- ESTADOS DE LOS MODIFICADORES EXTRAÍDOS DE MOBILEUI.CS ---
+    // Estados de modificadores nativos
     private boolean _modL1Activo = false;
     private boolean _modR1Activo = false;
 
-    // --- COMPONENTES DEL SET DE CONTROLES UNIFICADO ---
-    private RadialMenuView radialMenu;
-    private Button btnX, btnY, btnB, btnA;
-    private boolean isRadialMenuActive = false;
+    // Ecosistema avanzado de controles visuales nativos
+    private DualRadialMenuView dualRadialMenu;
+    private DPadView dPadView;
+    private ActionButtonsView actionButtonsView;
+    private TriggerButtonsView triggerButtonsView;
 
-    // --- LA IP DE TU PC EN TU RED LOCAL OFFLINE ---
     private static final String PC_IP = "192.168.1.50"; 
-
-    // --- TUS COLORES Y ESTILOS NATIVOS CORPORATIVOS ---
-    private int bg() { return Color.rgb(5, 10, 20); }
-    private int panel2() { return Color.rgb(15, 28, 48); }
-    private int goldBright() { return Color.rgb(245, 200, 95); }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -59,278 +53,72 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         
         mainContainer = new FrameLayout(this);
-        mainContainer.setBackgroundColor(bg());
+        mainContainer.setBackgroundColor(Color.rgb(5, 10, 20));
         setContentView(mainContainer);
 
-        // 1. Iniciar la pantalla de video para recibir la instancia de WoW desde la PC
+        // 1. Capa de renderizado de video espejo
         surfaceView = new SurfaceView(this);
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.addCallback(this);
         mainContainer.addView(surfaceView);
 
-        // 2. Superponer absolutamente todos los controles táctiles nativos de los 2 archivos
-        setupInterfaceControls();
+        // 2. Inicializar los controles estilizados nativos de juego
+        setupNativeGameControls();
 
-        // 3. Agregar la capa superior transparente para el Menú Radial (MobileUIRadialMenu.cs)
-        radialMenu = new RadialMenuView(this);
-        mainContainer.addView(radialMenu, new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
-
-        // Enlazar la selección angular del menú radial con tu flujo de red por bytes
-        radialMenu.setOnRadialSelectListener(keyChar -> {
-            sendStroke(String.valueOf(keyChar), true);
-            mainContainer.postDelayed(() -> sendStroke(String.valueOf(keyChar), false), 50);
-        });
-
-        // Configurar el capturador de gestos globales para el tercio central de la pantalla
-        setupRadialTouchTrigger();
-
-        // 4. Conectar al servidor de la PC en un hilo independiente
         isRunning = true;
         new Thread(this::connectAndStream).start();
     }
 
-    private void setupInterfaceControls() {
-        FrameLayout overlay = new FrameLayout(this);
+    private void setupNativeGameControls() {
+        // Inicializar D-PAD direccional (Abajo Izquierda)
+        dPadView = new DPadView(this);
+        FrameLayout.LayoutParams dPadParams = new FrameLayout.LayoutParams(dp(180), dp(180), Gravity.BOTTOM | Gravity.LEFT);
+        dPadParams.setMargins(dp(40), 0, 0, dp(40));
+        mainContainer.addView(dPadView, dPadParams);
 
-        // ============================================================
-        // 🚀 GATILLO MODIFICADOR IZQUIERDO: L1 (Posición exacta de MobileUI.cs)
-        // ============================================================
-        Button btnL1 = new Button(this);
-        btnL1.setText("MOD (L1)");
-        btnL1.setTextColor(goldBright());
-        btnL1.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        btnL1.setBackgroundColor(panel2());
-        FrameLayout.LayoutParams l1Params = new FrameLayout.LayoutParams(dp(140), dp(70));
-        l1Params.gravity = Gravity.TOP | Gravity.LEFT;
-        l1Params.setMargins(dp(60), dp(40), 0, 0);
-        btnL1.setLayoutParams(l1Params);
+        // Inicializar Botonera en Rombo fija (Abajo Derecha)
+        actionButtonsView = new ActionButtonsView(this);
+        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(dp(220), dp(220), Gravity.BOTTOM | Gravity.RIGHT);
+        actionParams.setMargins(0, 0, dp(40), dp(40));
+        mainContainer.addView(actionButtonsView, actionParams);
 
-        btnL1.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                _modL1Activo = true;
-                actualizarTextosBotones();
-            } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                _modL1Activo = false;
-                actualizarTextosBotones();
-            }
-            return true;
-        });
-        overlay.addView(btnL1);
+        // Inicializar Gatillos ovalados L1/R1 de interfaz (Arriba)
+        triggerButtonsView = new TriggerButtonsView(this);
+        mainContainer.addView(triggerButtonsView, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
-        // ============================================================
-        // 🚀 GATILLO MODIFICADOR DERECHO: R1 (Posición exacta de MobileUI.cs)
-        // ============================================================
-        Button btnR1 = new Button(this);
-        btnR1.setText("MOD (R1)");
-        btnR1.setTextColor(goldBright());
-        btnR1.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        btnR1.setBackgroundColor(panel2());
-        FrameLayout.LayoutParams r1Params = new FrameLayout.LayoutParams(dp(140), dp(70));
-        r1Params.gravity = Gravity.TOP | Gravity.RIGHT;
-        r1Params.setMargins(0, dp(40), dp(60), 0);
-        btnR1.setLayoutParams(r1Params);
-
-        btnR1.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                _modR1Activo = true;
-                actualizarTextosBotones();
-            } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                _modR1Activo = false;
-                actualizarTextosBotones();
-            }
-            return true;
-        });
-        overlay.addView(btnR1);
-
-        // ============================================================
-        // 🚀 D-PAD DIRECCIONAL DE MOVIMIENTO (W, A, S, D)
-        // ============================================================
-        GridLayout dPad = new GridLayout(this);
-        dPad.setColumnCount(3);
-        dPad.setRowCount(3);
-        FrameLayout.LayoutParams dPadParams = new FrameLayout.LayoutParams(dp(165), dp(165));
-        dPadParams.gravity = Gravity.BOTTOM | Gravity.LEFT;
-        dPadParams.setMargins(dp(100), 0, 0, dp(100)); // Alineación de tu base nativa
-        dPad.setLayoutParams(dPadParams);
-
-        dPad.addView(new View(this)); dPad.addView(createTouchButton("W")); dPad.addView(new View(this));
-        dPad.addView(createTouchButton("A")); dPad.addView(new View(this)); dPad.addView(createTouchButton("D"));
-        dPad.addView(new View(this)); dPad.addView(createTouchButton("S")); dPad.addView(new View(this));
-        overlay.addView(dPad);
-
-        // ============================================================
-        // 🚀 BOTONERA EN ROMBO DERECHA (X, Y, B, A) DE TU ARCHIVO ORIGINAL
-        // ============================================================
-        FrameLayout buttonsContainer = new FrameLayout(this);
-        FrameLayout.LayoutParams containerParams = new FrameLayout.LayoutParams(dp(240), dp(240));
-        containerParams.gravity = Gravity.BOTTOM | Gravity.RIGHT;
-        containerParams.setMargins(0, 0, dp(100), dp(100));
-        buttonsContainer.setLayoutParams(containerParams);
-
-        btnX = createGameButton("X");
-        btnY = createGameButton("Y");
-        btnB = createGameButton("B");
-        btnA = createGameButton("A");
-
-        // Distribución en cruz en base a las posiciones que definiste en Godot
-        setButtonFramePosition(btnX, dp(0), dp(70));
-        setButtonFramePosition(btnY, dp(80), dp(0));
-        setButtonFramePosition(btnB, dp(160), dp(70));
-        setButtonFramePosition(btnA, dp(80), dp(140));
-
-        buttonsContainer.addView(btnX);
-        buttonsContainer.addView(btnY);
-        buttonsContainer.addView(btnB);
-        buttonsContainer.addView(btnA);
-        overlay.addView(buttonsContainer);
-
-        mainContainer.addView(overlay);
-        actualizarTextosBotones();
+        // Inicializar Capa de Menús Radiales Dobles Invisibles (Centro)
+        dualRadialMenu = new DualRadialMenuView(this);
+        mainContainer.addView(dualRadialMenu, new FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
     }
 
-    private void setupRadialTouchTrigger() {
-        mainContainer.setOnTouchListener((v, event) -> {
-            float screenWidth = v.getWidth();
-            float tercio = screenWidth / 3f;
-            float touchX = event.getX();
-
-            // Interceptar toques en el tercio central exacto (Lógica estricta de MobileUI.cs)
-            if (touchX > tercio && touchX < (tercio * 2)) {
-                if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                    isRadialMenuActive = true;
-                    radialMenu.mostrarMenu(event.getX(), event.getY());
-                    return true;
-                }
-            }
-            if (event.getAction() == MotionEvent.ACTION_UP) {
-                isRadialMenuActive = false;
-            }
-            return radialMenu.dispatchTouchEvent(event);
-        });
-    }
-    // ============================================================
-    // 🚀 SISTEMA DE ENTRADA TÁCTIL NATIVO PARA EL D-PAD (W, A, S, D)
-    // ============================================================
-    private Button createTouchButton(final String key) {
-        Button b = new Button(this);
-        b.setText(key);
-        b.setTextColor(goldBright());
-        b.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        b.setBackgroundColor(panel2());
-        
-        b.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                sendStroke(key, true); // Envía KeyDown directo a la PC
-                b.setBackgroundColor(goldBright()); 
-                b.setTextColor(bg());
-            } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                sendStroke(key, false); // Envía KeyUp directo a la PC
-                b.setBackgroundColor(panel2()); 
-                b.setTextColor(goldBright());
-            }
-            return true;
-        });
-        return b;
-    }
-
-    // ============================================================
-    // 🚀 CREACIÓN DINÁMICA DE LA BOTONERA EN ROMBO (X, Y, B, A)
-    // ============================================================
-    private Button createGameButton(final String tag) {
-        Button b = new Button(this);
-        b.setTextColor(goldBright());
-        b.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        b.setBackgroundColor(panel2());
-        b.setFocusable(false);
-
-        b.setOnTouchListener((v, event) -> {
-            if (event.getAction() == MotionEvent.ACTION_DOWN) {
-                String teclaAEnviar = obtenerTeclaMapeadaActual(tag);
-                sendStroke(teclaAEnviar, true);
-                b.setBackgroundColor(goldBright()); 
-                b.setTextColor(bg());
-            } else if (event.getAction() == MotionEvent.ACTION_UP) {
-                String teclaAEnviar = obtenerTeclaMapeadaActual(tag);
-                sendStroke(teclaAEnviar, false);
-                b.setBackgroundColor(panel2()); 
-                b.setTextColor(goldBright());
-            }
-            return true;
-        });
-        return b;
-    }
-
-    // --- REPRODUCCIÓN MATEMÁTICA EXACTA DE TU ARCHIVO MOBILEUI.CS ---
-    private void actualizarTextosBotones() {
-        if (btnX == null || btnY == null || btnB == null || btnA == null) return;
-
-        if (!_modL1Activo && !_modR1Activo) {
-            btnX.setText("Hab 1"); btnY.setText("Hab 2"); btnB.setText("Hab 3"); btnA.setText("Saltar");
-        } else if (_modL1Activo && !_modR1Activo) {
-            btnX.setText("Spell L5"); btnY.setText("Spell L6"); btnB.setText("Spell L7"); btnA.setText("Montura");
-        } else if (!_modL1Activo && _modR1Activo) {
-            btnX.setText("Spell R9"); btnY.setText("Spell R10"); btnB.setText("Spell R11"); btnA.setText("Poción");
-        }
-    }
-
-    private String obtenerTeclaMapeadaActual(String tag) {
-        if (!_modL1Activo && !_modR1Activo) {
-            switch (tag) { 
-                case "X": return "1"; case "Y": return "2"; case "B": return "3"; case "A": return "J"; // J = Jump
-            } 
-        } else if (_modL1Activo && !_modR1Activo) {
-            switch (tag) { 
-                case "X": return "5"; case "Y": return "6"; case "B": return "7"; case "A": return "M"; // M = Montura
-            } 
-        } else if (!_modL1Activo && _modR1Activo) {
-            switch (tag) { 
-                case "X": return "9"; case "Y": return "0"; case "B": return "F"; case "A": return "P"; // P = Poción
-            } 
-        }
-        return "1";
-    }
-
-    private void setButtonFramePosition(Button b, int x, int y) {
-        FrameLayout.LayoutParams p = new FrameLayout.LayoutParams(dp(80), dp(80));
-        p.leftMargin = x; 
-        p.topMargin = y;
-        b.setLayoutParams(p);
-    }
-
-    // ============================================================
-    // 🚀 PROTOCOLO DE RED: ENVÍO DE RÁFAGAS POR SOCKET BINARIO
-    // ============================================================
-    private void sendStroke(String key, boolean pressed) {
+    public void sendStroke(String key, boolean pressed) {
         if (commandStream == null) return;
         new Thread(() -> {
             try {
-                // Inyecta el buffer binario de 2 bytes exigido por tu servidor en PC: [Acción][Tecla]
                 commandStream.write(new byte[]{ (byte)(pressed ? 1 : 0), (byte)key.charAt(0) });
                 commandStream.flush();
             } catch (Exception ignored) {}
         }).start();
     }
 
-    // ============================================================
-    // 🚀 BUCLE RECEPTOR DE STREAMING DE VIDEO (DECÓDER DE BUFFERS JPEG)
-    // ============================================================
+    public void setModL1(boolean active) { this._modL1Activo = active; }
+    public void setModR1(boolean active) { this._modR1Activo = active; }
+    public boolean isModL1() { return _modL1Activo; }
+    public boolean isModR1() { return _modR1Activo; }
+
     private void connectAndStream() {
         try {
             socket = new Socket(PC_IP, 8888);
             videoStream = socket.getInputStream();
             commandStream = socket.getOutputStream();
-
             byte[] sizeBuffer = new byte[4];
             while (isRunning) {
-                // Leer el tamaño del encabezado Little Endian de 4 bytes enviado por el PC
                 int bytesRead = videoStream.read(sizeBuffer, 0, 4);
                 if (bytesRead == -1) break;
-                
                 int size = ByteBuffer.wrap(sizeBuffer).order(java.nio.ByteOrder.LITTLE_ENDIAN).getInt();
                 if (size <= 0) continue;
-
-                // Leer secuencialmente el cuerpo binario de la imagen reducida
                 byte[] imgBuffer = new byte[size];
                 int read = 0;
                 while (read < size) {
@@ -338,8 +126,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     if (result == -1) break;
                     read += result;
                 }
-
-                // Renderizado directo en el Canvas de bajo nivel por debajo de los controles táctiles
                 Bitmap bmp = BitmapFactory.decodeByteArray(imgBuffer, 0, imgBuffer.length);
                 if (bmp != null && surfaceHolder.getSurface().isValid()) {
                     Canvas canvas = surfaceHolder.lockCanvas();
@@ -352,113 +138,347 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         } catch (Exception ignored) {}
     }
 
-    private int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
+    public int dp(int value) { return (int) (value * getResources().getDisplayMetrics().density + 0.5f); }
     @Override public void surfaceCreated(SurfaceHolder holder) {}
     @Override public void surfaceChanged(SurfaceHolder holder, int f, int w, int h) {}
     @Override public void surfaceDestroyed(SurfaceHolder holder) { isRunning = false; }
 }
 
 // ============================================================
-// 🎡 CLASE GRÁFICA DEL MENÚ RADIAL COMPLETO (MobileUIRadialMenu.cs)
+// 🕹️ VISTA D-PAD ANALÓGICA NATAL DE ANDROID (Estilo Consola)
 // ============================================================
-class RadialMenuView extends View {
-    public interface OnRadialSelectListener { void onSelect(char keyChar); }
-    private OnRadialSelectListener selectListener;
+class DPadView extends View {
+    private MainActivity act;
+    private Paint pBase, pStick;
+    private float cX, cY, sX, sY, rBase, rStick;
+    private String lastX = "", lastY = "";
 
-    private boolean activo = false;
-    private float mX, mY;
-    private int seleccionadoIndex = -1;
-    private final float radioMenu = 175f;
-
-    private final List<String> opciones = new ArrayList<>();
-    private final List<Character> teclasMapeadas = new ArrayList<>();
-    private Paint pBase, pText, pSelect;
-
-    public RadialMenuView(Context context) {
+    public DPadView(Context context) {
         super(context);
-        // Tus 5 opciones del menú radial con los opcodes mapeados al teclado físico de la PC
-        opciones.add("Personaje");   teclasMapeadas.add('C'); // C = TOGGLE_CHARACTER_SHEET
-        opciones.add("Inventario");  teclasMapeadas.add('I'); // I = TOGGLE_BAGS
-        opciones.add("Hechizos");    teclasMapeadas.add('P'); // P = TOGGLE_SPELLBOOK
-        opciones.add("Mazmorras");   teclasMapeadas.add('L'); // L = TOGGLE_LFG_PARENT
-        opciones.add("BGs");         teclasMapeadas.add('H'); // H = TOGGLE_BATTLEGROUND
-
+        act = (MainActivity) context;
         pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-        pBase.setColor(Color.rgb(15, 28, 48)); // Color panel2 corporativo
-
-        pText = new Paint(Paint.ANTI_ALIAS_FLAG);
-        pText.setColor(Color.rgb(245, 200, 95)); // Color goldBright corporativo
-        pText.setTextSize(30);
-        pText.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
-        pText.setTextAlign(Paint.Align.CENTER);
-
-        pSelect = new Paint(Paint.ANTI_ALIAS_FLAG);
-        pSelect.setColor(Color.argb(140, 245, 200, 95)); // Resaltado de selección en oro
+        pBase.setColor(Color.argb(40, 255, 255, 255));
+        pStick = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pStick.setColor(Color.argb(120, 15, 28, 48));
     }
 
-    public void setOnRadialSelectListener(OnRadialSelectListener listener) { this.selectListener = listener; }
-
-    public void mostrarMenu(float x, float y) {
-        this.mX = x; this.mY = y; this.activo = true; this.seleccionadoIndex = -1;
-        invalidate();
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        cX = w / 2f; cY = h / 2f; sX = cX; sY = cY;
+        rBase = Math.min(w, h) / 2.2f; rStick = Math.min(w, h) / 4.5f;
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        if (!activo) return;
+        canvas.drawCircle(cX, cY, rBase, pBase);
+        canvas.drawCircle(sX, sY, rStick, pStick);
+    }
 
-        // Núcleo o eje central del control táctil radial
-        canvas.drawCircle(mX, mY, 45f, pBase);
-        float anguloPaso = (float) (Math.PI * 2 / opciones.size());
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+            float absX = event.getX() - cX;
+            float absY = event.getY() - cY;
+            float dist = (float) Math.sqrt(absX * absX + absY * absY);
+            if (dist < rBase) {
+                sX = event.getX(); sY = event.getY();
+            } else {
+                sX = cX + (absX / dist) * rBase; sY = cY + (absY / dist) * rBase;
+            }
+            invalidate();
 
-        for (int i = 0; i < opciones.size(); i++) {
-            float anguloActual = i * anguloPaso;
-            float posX = mX + (float) Math.cos(anguloActual) * radioMenu;
-            float posY = mY + (float) Math.sin(anguloActual) * radioMenu;
+            float xPct = (sX - cX) / rBase;
+            float yPct = -(sY - cY) / rBase;
 
-            // Iluminación selectiva de los gajos en 360 grados según el arrastre del dedo
-            if (i == seleccionadoIndex) {
-                canvas.drawCircle(posX, posY, 80f, pSelect);
+            String curX = (xPct > 0.35f) ? "D" : (xPct < -0.35f) ? "A" : "";
+            String curY = (yPct > 0.35f) ? "W" : (yPct < -0.35f) ? "S" : "";
+
+            if (!curX.equals(lastX)) {
+                if (!lastX.isEmpty()) act.sendStroke(lastX, false);
+                if (!curX.isEmpty()) act.sendStroke(curX, true);
+                lastX = curX;
+            }
+            if (!curY.equals(lastY)) {
+                if (!lastY.isEmpty()) act.sendStroke(lastY, false);
+                if (!curY.isEmpty()) act.sendStroke(curY, true);
+                lastY = curY;
+            }
+            return true;
+        } else if (event.getAction() == MotionEvent.ACTION_UP) {
+            sX = cX; sY = cY;
+            invalidate();
+            if (!lastX.isEmpty()) act.sendStroke(lastX, false);
+            if (!lastY.isEmpty()) act.sendStroke(lastY, false);
+            lastX = ""; lastY = "";
+            return true;
+        }
+        return false;
+    }
+}
+// ============================================================
+// 🔘 BOTONERA JUEGO REDONDA (X, Y, B) EXCLUSIVA DE HABILIDADES
+// ============================================================
+class ActionButtonsView extends View {
+    private MainActivity act;
+    private Paint pBtn, pText;
+    private float[][] bPos = new float[3][2];
+    private String[] tags = {"X", "Y", "B"};
+    private float radius;
+    private int pressedIdx = -1;
+
+    public ActionButtonsView(Context context) {
+        super(context);
+        act = (MainActivity) context;
+        pBtn = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pText = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pText.setColor(Color.rgb(245, 200, 95));
+        pText.setTextSize(32);
+        pText.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        pText.setTextAlign(Paint.Align.CENTER);
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        radius = act.dp(36);
+        // Rombo limpio de tres botones táctiles periféricos fijos
+        bPos[0] = new float[]{radius, h / 2f};              // X (Izquierda)
+        bPos[1] = new float[]{w / 2f, radius};              // Y (Arriba)
+        bPos[2] = new float[]{w - radius, h / 2f};          // B (Derecha)
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        for (int i = 0; i < 3; i++) {
+            if (i == pressedIdx) {
+                pBtn.setColor(Color.argb(180, 245, 200, 95));
                 pText.setColor(Color.rgb(5, 10, 20));
             } else {
-                canvas.drawCircle(posX, posY, 70f, pBase);
+                pBtn.setColor(Color.argb(100, 15, 28, 48));
                 pText.setColor(Color.rgb(245, 200, 95));
             }
-            canvas.drawText(opciones.get(i), posX, posY + 10f, pText);
+            canvas.drawCircle(bPos[i][0], bPos[i][1], radius, pBtn);
+            
+            // Alternancia dinámica de opcodes de combate en base a gatillos
+            String label = tags[i];
+            if (act.isModL1()) label = (i == 0) ? "L5" : (i == 1) ? "L6" : "L7";
+            else if (act.isModR1()) label = (i == 0) ? "R9" : (i == 1) ? "R10" : "R11";
+            
+            canvas.drawText(label, bPos[i][0], bPos[i][1] + 11f, pText);
         }
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        if (!activo) return false;
+        float x = event.getX(); float y = event.getY();
+        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+            int oldIdx = pressedIdx;
+            pressedIdx = -1;
+            for (int i = 0; i < 3; i++) {
+                float dx = x - bPos[i][0]; float dy = y - bPos[i][1];
+                if (Math.sqrt(dx * dx + dy * dy) < radius) {
+                    pressedIdx = i; break;
+                }
+            }
+            if (pressedIdx != oldIdx) {
+                if (oldIdx != -1) act.sendStroke(getMapKey(oldIdx), false);
+                if (pressedIdx != -1) act.sendStroke(getMapKey(pressedIdx), true);
+                invalidate();
+            }
+            return true;
+        } else if (event.getAction() == MotionEvent.ACTION_UP) {
+            if (pressedIdx != -1) act.sendStroke(getMapKey(pressedIdx), false);
+            pressedIdx = -1;
+            invalidate();
+            return true;
+        }
+        return false;
+    }
 
-if (event.getAction() == MotionEvent.ACTION_MOVE) {
-float dragX = event.getX() - mX;
-float dragY = event.getY() - mY;
-float distancia = (float) Math.sqrt(dragX * dragX + dragY * dragY);
-// Umbral matemático exacto de tu zona muerta central para evitar fallos por oscilación
-if (distancia > 50f) {
-float angulo = (float) Math.atan2(dragY, dragX);
-if (angulo < 0) angulo += (float) (Math.PI * 2);
-float tamanoSector = (float) (Math.PI * 2 / opciones.size());
-seleccionadoIndex = (int) (angulo / tamanoSector);
-if (seleccionadoIndex >= opciones.size()) seleccionadoIndex = opciones.size() - 1;
-} else {
-seleccionadoIndex = -1;
+    private String getMapKey(int idx) {
+        if (!act.isModL1() && !act.isModR1()) return (idx == 0) ? "1" : (idx == 1) ? "2" : "3";
+        if (act.isModL1()) return (idx == 0) ? "5" : (idx == 1) ? "6" : "7";
+        return (idx == 0) ? "9" : (idx == 1) ? "0" : "F";
+    }
 }
-invalidate();
-return true;
+
+// ============================================================
+// 🕹️ GATILLOS MODIFICADORES OVALADOS ERGONÓMICOS (L1 / R1)
+// ============================================================
+class TriggerButtonsView extends View {
+    private MainActivity act;
+    private Paint pBox, pTxt;
+    private float l, t, r, b, r_l, r_t, r_r, r_b;
+    private boolean l1Click = false, r1Click = false;
+
+    public TriggerButtonsView(Context context) {
+        super(context);
+        act = (MainActivity) context;
+        pBox = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pTxt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pTxt.setColor(Color.rgb(245, 200, 95));
+        pTxt.setTextSize(28);
+        pTxt.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        pTxt.setTextAlign(Paint.Align.CENTER);
+    }
+
+    @Override
+    protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+        super.onSizeChanged(w, h, oldw, oldh);
+        float wB = act.dp(130); float hB = act.dp(55);
+        l = act.dp(40); t = act.dp(30); r = l + wB; b = t + hB;
+        r_r = w - act.dp(40); r_t = act.dp(30); r_l = r_r - wB; r_b = r_t + hB;
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        pBox.setColor(l1Click ? Color.argb(160, 245, 200, 95) : Color.argb(80, 15, 28, 48));
+        canvas.drawRoundRect(l, t, r, b, 25f, 25f, pBox);
+        canvas.drawText("L1", (l + r) / 2f, (t + b) / 2f + 10f, pTxt);
+
+        pBox.setColor(r1Click ? Color.argb(160, 245, 200, 95) : Color.argb(80, 15, 28, 48));
+        canvas.drawRoundRect(r_l, r_t, r_r, r_b, 25f, 25f, pBox);
+        canvas.drawText("R1", (r_l + r_r) / 2f, (r_t + r_b) / 2f + 10f, pTxt);
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        float x = event.getX(); float y = event.getY();
+        if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
+            boolean curL1 = (x >= l && x <= r && y >= t && y <= b);
+            boolean curR1 = (x >= r_l && x <= r_r && y >= r_t && y <= r_b);
+            if (curL1 != l1Click || curR1 != r1Click) {
+                l1Click = curL1; r1Click = curR1;
+                act.setModL1(l1Click); act.setModR1(r1Click);
+                invalidate();
+            }
+            return true;
+        } else if (event.getAction() == MotionEvent.ACTION_UP) {
+            l1Click = false; r1Click = false;
+            act.setModL1(false); act.setModR1(false);
+            invalidate();
+            return true;
+        }
+        return false;
+    }
 }
-else if (event.getAction() == MotionEvent.ACTION_UP) {
-activo = false;
-if (selectListener != null && seleccionadoIndex != -1) {
-selectListener.onSelect(teclasMapeadas.get(seleccionadoIndex));
-}
-seleccionadoIndex = -1;
-invalidate();
-return true;
+
+// ============================================================
+// 🎡 CAPA AVANZADA DE MENÚS RADIALES DOBLES INVISIBLES
+// ============================================================
+class DualRadialMenuView extends View {
+    private MainActivity act;
+    private boolean activo = false;
+    private float mX, mY;
+    private int selectedIdx = -1;
+    private boolean esMenuSuperior = false; // Flag para discriminar la zona vertical de la pantalla
+
+    private List<String> optsInferior = new ArrayList<>();
+    private List<Character> keysInferior = new ArrayList<>();
+    
+    private List<String> optsSuperior = new ArrayList<>();
+    private List<Character> keysSuperior = new ArrayList<>();
+
+    private Paint pBase, pTxt, pSel;
+
+    public DualRadialMenuView(Context context) {
+        super(context);
+        act = (MainActivity) context;
+
+        // Menú Centro Abajo (Interfaz de WoW)
+        optsInferior.add("Personaje");  keysInferior.add('C');
+        optsInferior.add("Inventario"); keysInferior.add('I');
+        optsInferior.add("Hechizos");   keysInferior.add('P');
+        optsInferior.add("Mazmorras");  keysInferior.add('L');
+        optsInferior.add("BGs");        keysInferior.add('H');
+
+        // Menú Centro Arriba (Mecánicas de Utilidades Desacopladas)
+        optsSuperior.add("Saltar");     keysSuperior.add('J');
+        optsSuperior.add("Montura");    keysSuperior.add('M');
+        optsSuperior.add("Poción");     keysSuperior.add('P');
+
+        pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pBase.setColor(Color.argb(190, 15, 28, 48));
+        pTxt = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pTxt.setColor(Color.rgb(245, 200, 95));
+        pTxt.setTextSize(28);
+        pTxt.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
+        pTxt.setTextAlign(Paint.Align.CENTER);
+        pSel = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pSel.setColor(Color.argb(150, 245, 200, 95));
+    }
+
+    @Override
+    public boolean onTouchEvent(MotionEvent event) {
+        float x = event.getX(); float y = event.getY();
+        float tercioX = getWidth() / 3f;
+
+        // Ignorar eventos táctiles que pertenezcan a los cuadrantes laterales del D-PAD o de habilidades
+        if (!activo && (x < tercioX || x > tercioX * 2)) return false;
+
+        if (event.getAction() == MotionEvent.ACTION_DOWN) {
+            mX = x; mY = y; activo = true;
+            esMenuSuperior = (y < getHeight() / 2f); // Determina el menú fijo según la altura del click
+            selectedIdx = -1;
+            invalidate();
+            return true;
+        }
+
+        if (event.getAction() == MotionEvent.ACTION_MOVE && activo) {
+            float dx = x - mX; float dy = y - mY;
+            float dist = (float) Math.sqrt(dx * dx + dy * dy);
+            int totalOpts = esMenuSuperior ? optsSuperior.size() : optsInferior.size();
+
+            if (dist > act.dp(20)) {
+                float ang = (float) Math.atan2(dy, dx);
+                if (ang < 0) ang += (float) (Math.PI * 2);
+                float step = (float) (Math.PI * 2 / totalOpts);
+                selectedIdx = (int) (ang / step);
+                if (selectedIdx >= totalOpts) selectedIdx = totalOpts - 1;
+            } else {
+                selectedIdx = -1;
+            }
+            invalidate();
+            return true;
+        }
+
+        if (event.getAction() == MotionEvent.ACTION_UP && activo) {
+            activo = false;
+            if (selectedIdx != -1) {
+                char k = esMenuSuperior ? keysSuperior.get(selectedIdx) : keysInferior.get(selectedIdx);
+                act.sendStroke(String.valueOf(k), true);
+                post(() -> act.sendStroke(String.valueOf(k), false));
+            }
+            selectedIdx = -1;
+            invalidate();
+            return true;
 }
 return false;
+}
+@Override
+protected void onDraw(Canvas canvas) {
+super.onDraw(canvas);
+if (!activo) return;
+canvas.drawCircle(mX, mY, act.dp(25), pBase);
+List list = esMenuSuperior ? optsSuperior : optsInferior;
+float step = (float) (Math.PI * 2 / list.size());
+float rMenu = act.dp(100);
+for (int i = 0; i < list.size(); i++) {
+float ang = i * step;
+float pX = mX + (float) Math.cos(ang) * rMenu;
+float pY = mY + (float) Math.sin(ang) * rMenu;
+if (i == selectedIdx) {
+canvas.drawCircle(pX, pY, act.dp(55), pSel);
+pTxt.setColor(Color.rgb(5, 10, 20));
+} else {
+canvas.drawCircle(pX, pY, act.dp(48), pBase);
+pTxt.setColor(Color.rgb(245, 200, 95));
+}
+canvas.drawText(list.get(i), pX, pY + 10f, pTxt);
+}
 }
 }
