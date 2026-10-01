@@ -33,16 +33,39 @@ jobs:
         distribution: 'temurin'
         java-version: '17'
 
-    # CORRECCIÓN DEFINITIVA: Usar el sdkmanager nativo de la máquina para aceptar licencias en silencio
     - name: Aceptar Licencias Nativas de Android
       run: |
         & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" --licenses
       shell: powershell
       env:
-        # Esto le dice "sí a todo" de forma automática simulando la pulsación de la tecla 'y'
         INPUT_AUTO_ACCEPT_LICENSES: true
 
-    - name: Generar Wrapper de Gradle si no existe
+    # CORRECCIÓN DE MANIFIESTO DISPARADA DIRECTO EN LA MÁQUINA DE GITHUB
+    - name: Forzar Escritura Limpia de AndroidManifest.xml
+      run: |
+        $manifestDir = "mobile/src/main"
+        if (-not (Test-Path $manifestDir)) { New-Item -ItemType Directory -Force -Path $manifestDir }
+        
+        $xmlContent = @"
+        <?xml version="1.0" encoding="utf-8"?>
+        <manifest xmlns:android="http://android.com">
+            <uses-permission android:name="android.permission.INTERNET" />
+            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+            <application android:allowBackup="true" android:label="WoW Remote" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
+                <activity android:name="com.wowmobile.client.MainActivity" android:exported="true" android:screenOrientation="landscape" android:configChanges="orientation|screenSize|keyboardHidden">
+                    <intent-filter>
+                        <action android:name="android.intent.action.MAIN" />
+                        <category android:name="android.intent.category.LAUNCHER" />
+                    </intent-filter>
+                </activity>
+            </application>
+        </manifest>
+        "@
+        
+        Set-Content -Path "$manifestDir/AndroidManifest.xml" -Value $xmlContent -Encoding Utf8
+      shell: powershell
+
+    - name: Generar Wrapper de Gradle
       run: |
         cd mobile
         gradle wrapper --gradle-version 8.2
