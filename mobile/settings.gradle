@@ -1,1 +1,2 @@
 rootProject.name = "WoW-Mobile-Client"
+include ':app' 👈 // ¡Esta línea es obligatoria!
