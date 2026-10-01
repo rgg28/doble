@@ -498,7 +498,7 @@ if (!activo) return;
 canvas.drawCircle(mX, mY, act.dp(25), pBase);
 canvas.drawCircle(mX, mY, act.dp(25), pBorder);
 // CORREGIDO AL 100%: Tipado genérico explícito exigido por el compilador de Java 17
-List list = esMenuSuperior ? optsSuperior : optsInferior;
+List<String> list = esMenuSuperior ? optsSuperior : optsInferior;
 float step = (float) (Math.PI * 2 / list.size());
 float rMenu = act.dp(100);
 for (int i = 0; i < list.size(); i++) {
