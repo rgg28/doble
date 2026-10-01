@@ -40,30 +40,7 @@ jobs:
       env:
         INPUT_AUTO_ACCEPT_LICENSES: true
 
-    # CORRECCIÓN DE MANIFIESTO DISPARADA DIRECTO EN LA MÁQUINA DE GITHUB
-    - name: Forzar Escritura Limpia de AndroidManifest.xml
-      run: |
-        $manifestDir = "mobile/src/main"
-        if (-not (Test-Path $manifestDir)) { New-Item -ItemType Directory -Force -Path $manifestDir }
-        
-        $xmlContent = @"
-        <?xml version="1.0" encoding="utf-8"?>
-        <manifest xmlns:android="http://android.com">
-            <uses-permission android:name="android.permission.INTERNET" />
-            <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-            <application android:allowBackup="true" android:label="WoW Remote" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-                <activity android:name="com.wowmobile.client.MainActivity" android:exported="true" android:screenOrientation="landscape" android:configChanges="orientation|screenSize|keyboardHidden">
-                    <intent-filter>
-                        <action android:name="android.intent.action.MAIN" />
-                        <category android:name="android.intent.category.LAUNCHER" />
-                    </intent-filter>
-                </activity>
-            </application>
-        </manifest>
-        "@
-        
-        Set-Content -Path "$manifestDir/AndroidManifest.xml" -Value $xmlContent -Encoding Utf8
-      shell: powershell
+    # 🚀 SE ELIMINÓ EL PASO QUE SOBRESCRIBÍA EL MANIFIESTO CON EL ERROR
 
     - name: Generar Wrapper de Gradle
       run: |
