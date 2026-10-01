@@ -22,29 +22,42 @@ jobs:
 
     - name: Aceptar Licencias Nativas de Android
       run: |
-        & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" --licenses
+        & "\$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" --licenses
       shell: powershell
 
-    # --- 2. VALIDAR ESTRUCTURA NATIVA AUTOMÁTICAMENTE ---
-    - name: Asegurar estructura e instalar manifiesto temporal
+    # --- 2. FORZAR CONFIGURACIÓN RECTIFICADA DE GRADLE ---
+    - name: Corregir directorios e inyectar SourceSets
       run: |
-        # Definir la ruta correcta según el package com.wowmobile.client
-        $targetDir = "mobile\app\src\main\java\com\wowmobile\client"
-        if (!(Test-Path $targetDir)) { New-Item -ItemType Directory -Force -Path $targetDir }
-        
-        # Si moviste el archivo a la raíz de java, reubicarlo en su package
-        if (Test-Path "mobile\app\src\main\java\MainActivity.java") {
-            Move-Item "mobile\app\src\main\java\MainActivity.java" "$targetDir\MainActivity.java" -Force
+        # Crear estructura nativa física si no existe
+        \$javaDir = "mobile\app\src\main\java\com\wowmobile\client"
+        if (!(Test-Path javaDir)) New-Item -ItemType Directory -Force -Path javaDir }
+
+        # Mover recursivamente cualquier MainActivity.java suelto al directorio oficial
+        \$mainActivity = Get-ChildItem -Path .\mobile\ -Filter "MainActivity.java" -Recurse | Select-Object -First 1
+        if (null -ne mainActivity -and mainActivity.FullName -notlike "*javaDir*") {
+            Write-Host "Moviendo archivo desde: (mainActivity.FullName)"
+            Move-Item mainActivity.FullName "javaDir\MainActivity.java" -Force
         }
 
-        # Generar carpetas esenciales si no existen para evitar que Gradle falle
+        # Asegurar recursos básicos mínimos
         if (!(Test-Path "mobile\app\src\main\res\values")) { New-Item -ItemType Directory -Force -Path "mobile\app\src\main\res\values" }
-        
-        # Generar un AndroidManifest.xml básico de forma lineal y segura
-        $manifestPath = "mobile\app\src\main\AndroidManifest.xml"
-        if (!(Test-Path $manifestPath)) {
-            $manifestContent = '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://android.com" package="com.wowmobile.client"><uses-permission android:name="android.permission.INTERNET" /><application android:label="WoW Dual Stream" android:theme="@android:style/Theme.NoTitleBar.Fullscreen"><activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity></application></manifest>'
-            Set-Content -Path $manifestPath -Value $manifestContent -Encoding UTF8
+
+        # Generar un AndroidManifest.xml lineal y limpio con los permisos de sockets necesarios
+        \$manifestPath = "mobile\app\src\main\AndroidManifest.xml"
+        \$manifestContent = '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://android.com" package="com.wowmobile.client"><uses-permission android:name="android.permission.INTERNET" /><application android:label="WoW Dual Stream" android:theme="@android:style/Theme.NoTitleBar.Fullscreen"><activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity></application></manifest>'
+        Set-Content -Path manifestPath -Value manifestContent -Encoding UTF8
+
+        # --- PARCHE DE SOURCENSETS DIRECTO ---
+        # Forzar a Gradle a mirar explícitamente la carpeta java/ mapeando la ruta manual
+        \$gradleAppPath = "mobile\app\build.gradle"
+        if (Test-Path \$gradleAppPath) {
+            gradleContent = Get-Content gradleAppPath
+            # Si no tiene el mapeo de fuentes, se lo inyectamos al final del bloque android
+            if (\$gradleContent -notlike "*sourceSets*") {
+                \$patch = "`nandroid {`n    sourceSets {`n        main {`n            java.srcDirs = ['src/main/java']`n        }`n    }`n}"
+                Add-Content -Path gradleAppPath -Value patch
+                Write-Host "Parche de SourceSets aplicado al build.gradle de la App"
+            }
         }
       shell: powershell
 
@@ -64,20 +77,20 @@ jobs:
     - name: Compilar APK Móvil (Modo Release)
       run: |
         cd mobile
-        ./gradlew assembleRelease
+        ./gradlew assembleRelease --no-build-cache --rerun-tasks
       shell: cmd
 
     # --- 5. BUSCAR Y FIRMAR EL APK COMPILADO CON APKSIGNER ---
     - name: Firmar APK con Herramientas del SDK
       run: |
-        $apkFile = Get-ChildItem -Path .\mobile\ -Filter "*.apk" -Recurse | Select-Object -First 1
-        if ($null -eq $apkFile) {
+        \$apkFile = Get-ChildItem -Path .\mobile\ -Filter "*.apk" -Recurse | Select-Object -First 1
+        if (null -eq apkFile) {
             Write-Error "No se encontro ningun archivo APK compilado en el directorio mobile."
             exit 1
         }
-        Move-Item -Path $apkFile.FullName -Destination .\app-release.apk
-        $apkSigner = Get-ChildItem -Path "$env:ANDROID_HOME\build-tools" -Filter "apksigner.bat" -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        & $apkSigner.FullName sign --ks auto_generated.keystore --ks-key-alias auto_alias --ks-pass pass:TemporalPass123 --key-pass pass:TemporalPass123 --out .\app-release-signed.apk .\app-release.apk
+        Move-Item -Path \$apkFile.FullName -Destination .\app-release.apk
+        apkSigner = Get-ChildItem -Path "env:ANDROID_HOME\build-tools" -Filter "apksigner.bat" -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        & \$apkSigner.FullName sign --ks auto_generated.keystore --ks-key-alias auto_alias --ks-pass pass:TemporalPass123 --key-pass pass:TemporalPass123 --out .\app-release-signed.apk .\app-release.apk
       shell: powershell
 
     # --- 6. SUBIR EL APK LISTO Y FIRMADO ---
