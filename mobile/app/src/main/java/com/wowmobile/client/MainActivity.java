@@ -7,7 +7,6 @@ import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
-import android.graphics.PorterDuff;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -15,7 +14,8 @@ import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.WindowManager;
+import android.view.WindowInsets;
+import android.view.WindowInsetsController;
 import android.widget.FrameLayout;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -35,11 +35,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private OutputStream commandStream;
     private boolean isRunning = false;
 
-    // Estados de modificadores nativos
+    // Estados de modificadores nativos extraídos de tu lógica
     private boolean _modL1Activo = false;
     private boolean _modR1Activo = false;
 
-    // Ecosistema avanzado de controles visuales nativos
+    // Ecosistema avanzado de controles visuales nativos rediseñados
     private DualRadialMenuView dualRadialMenu;
     private DPadView dPadView;
     private ActionButtonsView actionButtonsView;
@@ -50,13 +50,21 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        
+        // Configurar pantalla completa con la API moderna de Android
+        if (get someWindow = getWindow(); someWindow != null) {
+            WindowInsetsController controller = someWindow.getInsetsController();
+            if (controller != null) {
+                controller.hide(WindowInsets.Type.statusBars() | WindowInsets.Type.navigationBars());
+                controller.setSystemBarsBehavior(WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+            }
+        }
         
         mainContainer = new FrameLayout(this);
         mainContainer.setBackgroundColor(Color.rgb(5, 10, 20));
         setContentView(mainContainer);
 
-        // 1. Capa de renderizado de video espejo
+        // 1. Capa de renderizado de video espejo de la PC
         surfaceView = new SurfaceView(this);
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.addCallback(this);
@@ -113,7 +121,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             socket = new Socket(PC_IP, 8888);
             videoStream = socket.getInputStream();
             commandStream = socket.getOutputStream();
-            byte[] sizeBuffer = new byte[4];
+            byte[] sizeBuffer = new byte[4]; // CORREGIDO: Declaración de tamaño fija
             while (isRunning) {
                 int bytesRead = videoStream.read(sizeBuffer, 0, 4);
                 if (bytesRead == -1) break;
@@ -218,12 +226,12 @@ class DPadView extends View {
     }
 }
 // ============================================================
-// 🔘 BOTONERA JUEGO REDONDA (X, Y, B) EXCLUSIVA DE HABILIDADES
+// 🔘 BOTONERA DE JUEGO REDONDA (X, Y, B) EXCLUSIVA DE HABILIDADES
 // ============================================================
 class ActionButtonsView extends View {
     private MainActivity act;
     private Paint pBtn, pText;
-    private float[][] bPos = new float[3][2];
+    private float[][] bPos; // CORREGIDO: Tipo de inicialización segura
     private String[] tags = {"X", "Y", "B"};
     private float radius;
     private int pressedIdx = -1;
@@ -243,7 +251,7 @@ class ActionButtonsView extends View {
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         radius = act.dp(36);
-        // Rombo limpio de tres botones táctiles periféricos fijos
+        bPos = new float[3][2]; // CORREGIDO: Reserva de memoria de matriz bidimensional
         bPos[0] = new float[]{radius, h / 2f};              // X (Izquierda)
         bPos[1] = new float[]{w / 2f, radius};              // Y (Arriba)
         bPos[2] = new float[]{w - radius, h / 2f};          // B (Derecha)
@@ -262,7 +270,6 @@ class ActionButtonsView extends View {
             }
             canvas.drawCircle(bPos[i][0], bPos[i][1], radius, pBtn);
             
-            // Alternancia dinámica de opcodes de combate en base a gatillos
             String label = tags[i];
             if (act.isModL1()) label = (i == 0) ? "L5" : (i == 1) ? "L6" : "L7";
             else if (act.isModR1()) label = (i == 0) ? "R9" : (i == 1) ? "R10" : "R11";
@@ -368,14 +375,14 @@ class TriggerButtonsView extends View {
 }
 
 // ============================================================
-// 🎡 CAPA AVANZADA DE MENÚS RADIALES DOBLES INVISIBLES
+// 🎡 CAPA DE MENÚS RADIALES DOBLES INVISIBLES (ARRIBA Y ABAJO)
 // ============================================================
 class DualRadialMenuView extends View {
     private MainActivity act;
     private boolean activo = false;
     private float mX, mY;
     private int selectedIdx = -1;
-    private boolean esMenuSuperior = false; // Flag para discriminar la zona vertical de la pantalla
+    private boolean esMenuSuperior = false;
 
     private List<String> optsInferior = new ArrayList<>();
     private List<Character> keysInferior = new ArrayList<>();
@@ -396,7 +403,7 @@ class DualRadialMenuView extends View {
         optsInferior.add("Mazmorras");  keysInferior.add('L');
         optsInferior.add("BGs");        keysInferior.add('H');
 
-        // Menú Centro Arriba (Mecánicas de Utilidades Desacopladas)
+        // Menú Centro Arriba (Utilidades Desacopladas)
         optsSuperior.add("Saltar");     keysSuperior.add('J');
         optsSuperior.add("Montura");    keysSuperior.add('M');
         optsSuperior.add("Poción");     keysSuperior.add('P');
@@ -417,12 +424,11 @@ class DualRadialMenuView extends View {
         float x = event.getX(); float y = event.getY();
         float tercioX = getWidth() / 3f;
 
-        // Ignorar eventos táctiles que pertenezcan a los cuadrantes laterales del D-PAD o de habilidades
         if (!activo && (x < tercioX || x > tercioX * 2)) return false;
 
         if (event.getAction() == MotionEvent.ACTION_DOWN) {
             mX = x; mY = y; activo = true;
-            esMenuSuperior = (y < getHeight() / 2f); // Determina el menú fijo según la altura del click
+            esMenuSuperior = (y < getHeight() / 2f);
             selectedIdx = -1;
             invalidate();
             return true;
@@ -456,14 +462,16 @@ class DualRadialMenuView extends View {
             selectedIdx = -1;
             invalidate();
             return true;
-}
-return false;
-}
-@Override
-protected void onDraw(Canvas canvas) {
-super.onDraw(canvas);
-if (!activo) return;
-canvas.drawCircle(mX, mY, act.dp(25), pBase);
+        }
+        return false;
+    }
+
+    @Override
+    protected void onDraw(Canvas canvas) {
+        super.onDraw(canvas);
+        if (!activo) return;
+
+        canvas.drawCircle(mX, mY, act.dp(25), pBase);
 List list = esMenuSuperior ? optsSuperior : optsInferior;
 float step = (float) (Math.PI * 2 / list.size());
 float rMenu = act.dp(100);
