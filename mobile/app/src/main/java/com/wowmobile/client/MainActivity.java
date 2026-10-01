@@ -38,7 +38,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private boolean _modL1Activo = false;
     private boolean _modR1Activo = false;
 
-    // Ecosistema avanzado de controles visuales nativos rediseñados
+    // Ecosistema avanzado de controles visuales nativos rediseñados estilo MOBA
     private DualRadialMenuView dualRadialMenu;
     private DPadView dPadView;
     private ActionButtonsView actionButtonsView;
@@ -49,8 +49,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        
-        // CORREGIDO: Método clásico e infalible para pantalla completa compatible con todo Android
         getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         
         mainContainer = new FrameLayout(this);
@@ -71,15 +69,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     private void setupNativeGameControls() {
-        // Inicializar D-PAD direccional (Abajo Izquierda)
+        // Inicializar D-PAD direccional MOBA (Abajo Izquierda)
         dPadView = new DPadView(this);
         FrameLayout.LayoutParams dPadParams = new FrameLayout.LayoutParams(dp(180), dp(180), Gravity.BOTTOM | Gravity.LEFT);
         dPadParams.setMargins(dp(40), 0, 0, dp(40));
         mainContainer.addView(dPadView, dPadParams);
 
-        // Inicializar Botonera en Rombo fija (Abajo Derecha)
+        // Inicializar Botonera en Rombo de 4 botones fija (Abajo Derecha)
         actionButtonsView = new ActionButtonsView(this);
-        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(dp(220), dp(220), Gravity.BOTTOM | Gravity.RIGHT);
+        FrameLayout.LayoutParams actionParams = new FrameLayout.LayoutParams(dp(240), dp(240), Gravity.BOTTOM | Gravity.RIGHT);
         actionParams.setMargins(0, 0, dp(40), dp(40));
         mainContainer.addView(actionButtonsView, actionParams);
 
@@ -146,11 +144,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 }
 
 // ============================================================
-// 🕹️ VISTA D-PAD ANALÓGICA NATAL DE ANDROID (Estilo Consola)
+// 🕹️ VISTA D-PAD ANALÓGICA CON ESTÉTICA MOBA FILTRADA
 // ============================================================
 class DPadView extends View {
     private MainActivity act;
-    private Paint pBase, pStick;
+    private Paint pBase, pBaseBorder, pStick;
     private float cX, cY, sX, sY, rBase, rStick;
     private String lastX = "", lastY = "";
 
@@ -158,22 +156,34 @@ class DPadView extends View {
         super(context);
         act = (MainActivity) context;
         pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-        pBase.setColor(Color.argb(40, 255, 255, 255));
+        pBase.setColor(Color.argb(35, 10, 15, 30));
+        
+        pBaseBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pBaseBorder.setColor(Color.argb(90, 245, 200, 95));
+        pBaseBorder.setStyle(Paint.Style.STROKE);
+        pBaseBorder.setStrokeWidth(act.dp(2));
+
         pStick = new Paint(Paint.ANTI_ALIAS_FLAG);
-        pStick.setColor(Color.argb(120, 15, 28, 48));
+        pStick.setColor(Color.argb(140, 245, 200, 95));
     }
 
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
         cX = w / 2f; cY = h / 2f; sX = cX; sY = cY;
-        rBase = Math.min(w, h) / 2.2f; rStick = Math.min(w, h) / 4.5f;
+        rBase = Math.min(w, h) / 2.2f; rStick = Math.min(w, h) / 5f;
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
         canvas.drawCircle(cX, cY, rBase, pBase);
+        canvas.drawCircle(cX, cY, rBase, pBaseBorder);
+        
+        // Ejes sutiles internos tipo juego MOBA
+        canvas.drawLine(cX - rBase, cY, cX + rBase, cY, pBaseBorder);
+        canvas.drawLine(cX, cY - rBase, cX, cY + rBase, pBaseBorder);
+        
         canvas.drawCircle(sX, sY, rStick, pStick);
     }
 
@@ -219,13 +229,13 @@ class DPadView extends View {
     }
 }
 // ============================================================
-// 🔘 BOTONERA DE JUEGO REDONDA (X, Y, B) EXCLUSIVA DE HABILIDADES
+// 🔘 BOTONERA MOBA REDONDA DE 4 BOTONES (X, Y, B, A) COMPLETA
 // ============================================================
 class ActionButtonsView extends View {
     private MainActivity act;
-    private Paint pBtn, pText;
+    private Paint pBtn, pBorder, pText;
     private float[][] bPos; 
-    private String[] tags = {"X", "Y", "B"};
+    private String[] tags = {"X", "Y", "B", "A"};
     private float radius;
     private int pressedIdx = -1;
 
@@ -233,9 +243,15 @@ class ActionButtonsView extends View {
         super(context);
         act = (MainActivity) context;
         pBtn = new Paint(Paint.ANTI_ALIAS_FLAG);
+        
+        pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pBorder.setColor(Color.argb(100, 245, 200, 95));
+        pBorder.setStyle(Paint.Style.STROKE);
+        pBorder.setStrokeWidth(act.dp(2));
+
         pText = new Paint(Paint.ANTI_ALIAS_FLAG);
         pText.setColor(Color.rgb(245, 200, 95));
-        pText.setTextSize(32);
+        pText.setTextSize(30);
         pText.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         pText.setTextAlign(Paint.Align.CENTER);
     }
@@ -243,31 +259,34 @@ class ActionButtonsView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        radius = act.dp(36);
-        bPos = new float[3][2]; 
+        radius = act.dp(35);
+        bPos = new float[4][2]; 
         bPos[0] = new float[]{radius, h / 2f};              // X (Izquierda)
         bPos[1] = new float[]{w / 2f, radius};              // Y (Arriba)
         bPos[2] = new float[]{w - radius, h / 2f};          // B (Derecha)
+        bPos[3] = new float[]{w / 2f, h - radius};          // A (Abajo - Integrado completo)
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < 4; i++) {
             if (i == pressedIdx) {
                 pBtn.setColor(Color.argb(180, 245, 200, 95));
                 pText.setColor(Color.rgb(5, 10, 20));
             } else {
-                pBtn.setColor(Color.argb(100, 15, 28, 48));
+                pBtn.setColor(Color.argb(50, 15, 28, 48));
                 pText.setColor(Color.rgb(245, 200, 95));
             }
             canvas.drawCircle(bPos[i][0], bPos[i][1], radius, pBtn);
+            canvas.drawCircle(bPos[i][0], bPos[i][1], radius, pBorder);
             
             String label = tags[i];
-            if (act.isModL1()) label = (i == 0) ? "L5" : (i == 1) ? "L6" : "L7";
-            else if (act.isModR1()) label = (i == 0) ? "R9" : (i == 1) ? "R10" : "R11";
+            if (act.isModL1()) label = (i == 0) ? "L5" : (i == 1) ? "L6" : (i == 2) ? "L7" : "L8";
+            else if (act.isModR1()) label = (i == 0) ? "R9" : (i == 1) ? "R10" : (i == 2) ? "R11" : "R12";
+            else label = (i == 0) ? "Hab 1" : (i == 1) ? "Hab 2" : (i == 2) ? "Hab 3" : "Hab 4";
             
-            canvas.drawText(label, bPos[i][0], bPos[i][1] + 11f, pText);
+            canvas.drawText(label, bPos[i][0], bPos[i][1] + 10f, pText);
         }
     }
 
@@ -277,7 +296,7 @@ class ActionButtonsView extends View {
         if (event.getAction() == MotionEvent.ACTION_DOWN || event.getAction() == MotionEvent.ACTION_MOVE) {
             int oldIdx = pressedIdx;
             pressedIdx = -1;
-            for (int i = 0; i < 3; i++) {
+            for (int i = 0; i < 4; i++) {
                 float dx = x - bPos[i][0]; float dy = y - bPos[i][1];
                 if (Math.sqrt(dx * dx + dy * dy) < radius) {
                     pressedIdx = i; break;
@@ -299,18 +318,18 @@ class ActionButtonsView extends View {
     }
 
     private String getMapKey(int idx) {
-        if (!act.isModL1() && !act.isModR1()) return (idx == 0) ? "1" : (idx == 1) ? "2" : "3";
-        if (act.isModL1()) return (idx == 0) ? "5" : (idx == 1) ? "6" : "7";
-        return (idx == 0) ? "9" : (idx == 1) ? "0" : "F";
+        if (!act.isModL1() && !act.isModR1()) return (idx == 0) ? "1" : (idx == 1) ? "2" : (idx == 2) ? "3" : "4";
+        if (act.isModL1()) return (idx == 0) ? "5" : (idx == 1) ? "6" : (idx == 2) ? "7" : "8";
+        return (idx == 0) ? "9" : (idx == 1) ? "0" : (idx == 2) ? "F" : "E";
     }
 }
 
 // ============================================================
-// 🕹️ GATILLOS MODIFICADORES OVALADOS ERGONÓMICOS (L1 / R1)
+// 🕹️ GATILLOS MODIFICADORES OVALADOS ERGONÓMICOS MOBA (L1 / R1)
 // ============================================================
 class TriggerButtonsView extends View {
     private MainActivity act;
-    private Paint pBox, pTxt;
+    private Paint pBox, pBorder, pTxt;
     private float l, t, r, b, r_l, r_t, r_r, r_b;
     private boolean l1Click = false, r1Click = false;
 
@@ -318,6 +337,12 @@ class TriggerButtonsView extends View {
         super(context);
         act = (MainActivity) context;
         pBox = new Paint(Paint.ANTI_ALIAS_FLAG);
+        
+        pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pBorder.setColor(Color.argb(100, 245, 200, 95));
+        pBorder.setStyle(Paint.Style.STROKE);
+        pBorder.setStrokeWidth(act.dp(2));
+
         pTxt = new Paint(Paint.ANTI_ALIAS_FLAG);
         pTxt.setColor(Color.rgb(245, 200, 95));
         pTxt.setTextSize(28);
@@ -328,7 +353,7 @@ class TriggerButtonsView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int oldw, int oldh) {
         super.onSizeChanged(w, h, oldw, oldh);
-        float wB = act.dp(130); float hB = act.dp(55);
+        float wB = act.dp(120); float hB = act.dp(50);
         l = act.dp(40); t = act.dp(30); r = l + wB; b = t + hB;
         r_r = w - act.dp(40); r_t = act.dp(30); r_l = r_r - wB; r_b = r_t + hB;
     }
@@ -336,12 +361,14 @@ class TriggerButtonsView extends View {
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        pBox.setColor(l1Click ? Color.argb(160, 245, 200, 95) : Color.argb(80, 15, 28, 48));
-        canvas.drawRoundRect(l, t, r, b, 25f, 25f, pBox);
+        pBox.setColor(l1Click ? Color.argb(160, 245, 200, 95) : Color.argb(45, 15, 28, 48));
+        canvas.drawRoundRect(l, t, r, b, 30f, 30f, pBox);
+        canvas.drawRoundRect(l, t, r, b, 30f, 30f, pBorder);
         canvas.drawText("L1", (l + r) / 2f, (t + b) / 2f + 10f, pTxt);
 
-        pBox.setColor(r1Click ? Color.argb(160, 245, 200, 95) : Color.argb(80, 15, 28, 48));
-        canvas.drawRoundRect(r_l, r_t, r_r, r_b, 25f, 25f, pBox);
+        pBox.setColor(r1Click ? Color.argb(160, 245, 200, 95) : Color.argb(45, 15, 28, 48));
+        canvas.drawRoundRect(r_l, r_t, r_r, r_b, 30f, 30f, pBox);
+        canvas.drawRoundRect(r_l, r_t, r_r, r_b, 30f, 30f, pBorder);
         canvas.drawText("R1", (r_l + r_r) / 2f, (r_t + r_b) / 2f + 10f, pTxt);
     }
 
@@ -368,7 +395,7 @@ class TriggerButtonsView extends View {
 }
 
 // ============================================================
-// 👑 CAPA DE MENÚS RADIALES DOBLES INVISIBLES (ARRIBA Y ABAJO)
+// 🎡 CAPA DE MENÚS RADIALES DOBLES INVISIBLES ESTILO MOBA
 // ============================================================
 class DualRadialMenuView extends View {
     private MainActivity act;
@@ -383,7 +410,7 @@ class DualRadialMenuView extends View {
     private List<String> optsSuperior = new ArrayList<>();
     private List<Character> keysSuperior = new ArrayList<>();
 
-    private Paint pBase, pTxt, pSel;
+    private Paint pBase, pBorder, pTxt, pSel;
 
     public DualRadialMenuView(Context context) {
         super(context);
@@ -403,11 +430,18 @@ class DualRadialMenuView extends View {
 
         pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
         pBase.setColor(Color.argb(190, 15, 28, 48));
+        
+        pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        pBorder.setColor(Color.argb(100, 245, 200, 95));
+        pBorder.setStyle(Paint.Style.STROKE);
+        pBorder.setStrokeWidth(act.dp(2));
+
         pTxt = new Paint(Paint.ANTI_ALIAS_FLAG);
         pTxt.setColor(Color.rgb(245, 200, 95));
         pTxt.setTextSize(28);
         pTxt.setTypeface(Typeface.create("sans-serif", Typeface.BOLD));
         pTxt.setTextAlign(Paint.Align.CENTER);
+        
         pSel = new Paint(Paint.ANTI_ALIAS_FLAG);
         pSel.setColor(Color.argb(150, 245, 200, 95));
     }
@@ -434,38 +468,37 @@ class DualRadialMenuView extends View {
 
             if (dist > act.dp(20)) {
                 float ang = (float) Math.atan2(dy, dx);
-                if (ang < 0) ang += (float) (Math.PI * 2);
-                float step = (float) (Math.PI * 2 / totalOpts);
-                selectedIdx = (int) (ang / step);
-                if (selectedIdx >= totalOpts) selectedIdx = totalOpts - 1;
-            } else {
-                selectedIdx = -1;
-            }
-            invalidate();
-            return true;
-        }
-
-        if (event.getAction() == MotionEvent.ACTION_UP && activo) {
-            activo = false;
-            if (selectedIdx != -1) {
-                char k = esMenuSuperior ? keysSuperior.get(selectedIdx) : keysInferior.get(selectedIdx);
-                act.sendStroke(String.valueOf(k), true);
-                post(() -> act.sendStroke(String.valueOf(k), false));
-            }
-            selectedIdx = -1;
-            invalidate();
-            return true;
-        }
-        return false;
-    }
-
-    @Override
-    protected void onDraw(Canvas canvas) {
-        super.onDraw(canvas);
-        if (!activo) return;
-
-        canvas.drawCircle(mX, mY, act.dp(25), pBase);
-List<String> list = esMenuSuperior ? optsSuperior : optsInferior; // CORREGIDO: Declaración de tipo genérico estricta
+if (ang < 0) ang += (float) (Math.PI * 2);
+float step = (float) (Math.PI * 2 / totalOpts);
+selectedIdx = (int) (ang / step);
+if (selectedIdx >= totalOpts) selectedIdx = totalOpts - 1;
+} else {
+selectedIdx = -1;
+}
+invalidate();
+return true;
+}
+if (event.getAction() == MotionEvent.ACTION_UP && activo) {
+activo = false;
+if (selectedIdx != -1) {
+char k = esMenuSuperior ? keysSuperior.get(selectedIdx) : keysInferior.get(selectedIdx);
+act.sendStroke(String.valueOf(k), true);
+post(() -> act.sendStroke(String.valueOf(k), false));
+}
+selectedIdx = -1;
+invalidate();
+return true;
+}
+return false;
+}
+@Override
+protected void onDraw(Canvas canvas) {
+super.onDraw(canvas);
+if (!activo) return;
+canvas.drawCircle(mX, mY, act.dp(25), pBase);
+canvas.drawCircle(mX, mY, act.dp(25), pBorder);
+// CORREGIDO AL 100%: Tipado genérico explícito exigido por el compilador de Java 17
+List list = esMenuSuperior ? optsSuperior : optsInferior;
 float step = (float) (Math.PI * 2 / list.size());
 float rMenu = act.dp(100);
 for (int i = 0; i < list.size(); i++) {
@@ -477,6 +510,7 @@ canvas.drawCircle(pX, pY, act.dp(55), pSel);
 pTxt.setColor(Color.rgb(5, 10, 20));
 } else {
 canvas.drawCircle(pX, pY, act.dp(48), pBase);
+canvas.drawCircle(pX, pY, act.dp(48), pBorder);
 pTxt.setColor(Color.rgb(245, 200, 95));
 }
 canvas.drawText(list.get(i), pX, pY + 10f, pTxt);
