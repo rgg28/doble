@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://android.com"
-    package="com.wowmobile.client">
+<manifest xmlns:android="http://android.com">
 
-    <!-- Permisos esenciales para red local offline -->
+    <!-- Permisos esenciales corregidos con su prefijo correspondiente -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
@@ -12,7 +11,7 @@
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
         
         <activity
-            android:name=".MainActivity"
+            android:name="com.wowmobile.client.MainActivity"
             android:exported="true"
             android:screenOrientation="landscape"
             android:configChanges="orientation|screenSize|keyboardHidden">
