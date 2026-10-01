@@ -44,24 +44,41 @@ jobs:
         ./gradlew assembleRelease
       shell: cmd
 
-    # --- 4. APLICAR FIRMA AUTOMÁTICA AL APK ---
-    - name: Firmar APK con Keystore Temporal
-      uses: r0adkll/sign-android-release@v1
-      id: sign_app
-      with:
-        releaseDirectory: mobile/app/build/outputs/apk/release
-        signingKeyBase64: "" # No es necesario pasarlo en base64 si mapeamos el archivo localmente
-        alias: auto_alias
-        singleFile: true
-        keyStorePassword: TemporalPass123
-        keyPassword: TemporalPass123
-      env:
-        # Forzamos a la acción a leer el archivo de la firma generado en el paso 2
-        ANDROID_KEYSTORE_PATH: ../../auto_generated.keystore
+    # --- 4. BUSCAR Y FIRMAR EL APK COMPILADO CON APKSIGNER ---
+    - name: Firmar APK con Herramientas del SDK
+      run: |
+        # Buscar el archivo APK generado de forma recursiva en la carpeta mobile
+        $apkFile = Get-ChildItem -Path .\mobile\ -Filter "*.apk" -Recurse | Select-Object -First 1
+        
+        if ($null -eq $apkFile) {
+            Write-Error "No se encontro ningun archivo APK compilado en el directorio mobile."
+            exit 1
+        }
+        
+        Write-Host "APK encontrado en: $($apkFile.FullName)"
+        
+        # Mover el APK a la raíz para facilitar su manejo
+        Move-Item -Path $apkFile.FullName -Destination .\app-release.apk
+        
+        # Buscar el apksigner.bat más reciente en el SDK de Android
+        $apkSigner = Get-ChildItem -Path "$env:ANDROID_HOME\build-tools" -Filter "apksigner.bat" -Recurse | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        
+        if ($null -eq $apkSigner) {
+            Write-Error "No se encontro apksigner.bat en el SDK de Android."
+            exit 1
+        }
+        
+        Write-Host "Usando apksigner en: $($apkSigner.FullName)"
+        
+        # Ejecutar la firma del APK
+        & $apkSigner.FullName sign --ks auto_generated.keystore --ks-key-alias auto_alias --ks-pass pass:TemporalPass123 --key-pass pass:TemporalPass123 --out .\app-release-signed.apk .\app-release.apk
+        
+        Write-Host "¡APK firmado exitosamente!"
+      shell: powershell
 
     # --- 5. SUBIR EL APK LISTO Y FIRMADO ---
     - name: Subir APK Listo y Firmado
       uses: actions/upload-artifact@v4
       with:
         name: WoWDualStream-Mobile-AutoSigned-APK
-        path: ${{ steps.sign_app.outputs.signedReleaseFile }}
+        path: app-release-signed.apk
