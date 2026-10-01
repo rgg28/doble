@@ -2,12 +2,11 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- CORRECCIÓN: Añadido '-windows' al TargetFramework para permitir APIs de Windows 10/11 -->
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- CORRECCIÓN DEFINITIVA: Forzar la versión de plataforma 10.0 en el framework -->
+    <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
-    <!-- Ahora este valor ya es válido porque el compilador sabe que es un entorno Windows -->
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
