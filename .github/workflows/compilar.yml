@@ -1,8 +1,8 @@
-name: Compilar APK de Android
+name: Generar Firma y Compilar APK Release
 
 on:
   push:
-    branches: [ "main" ] # Cambia "main" por el nombre de tu rama si es diferente
+    branches: [ "main" ] # Cambia a tu rama principal si es diferente
   pull_request:
     branches: [ "main" ]
 
@@ -22,7 +22,28 @@ jobs:
 
     - name: Configurar Gradle
       uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.4'
 
-    - name: Compilar APK (Debug)
-      run: gradle assembleDebug
-      working-directory: mobile # 👈 Esto le dice que entre a tu carpeta mobile
+    - name: Generar Clave de Firma Automáticamente
+      run: |
+        keytool -genkeypair \
+          -v \
+          -keystore mobile/app/release-auto-key.jks \
+          -alias my-auto-alias \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass mi_contrasenia_secreta \
+          -keypass mi_contrasenia_secreta \
+          -dname "CN=WowMobile, OU=Dev, O=Client, L=City, S=State, C=US"
+
+    - name: Compilar APK (Release)
+      run: gradle assembleRelease
+      working-directory: mobile
+
+    - name: Subir APK generado y firmado
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-release-firmado-auto
+        path: mobile/app/build/outputs/apk/release/app-release.apk
