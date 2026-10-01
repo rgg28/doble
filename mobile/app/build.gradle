@@ -10,14 +10,22 @@ android {
         targetSdk 34
         versionCode 1
         versionName "1.0"
-        
-        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // CONFIGURACIÓN DE LA FIRMA GENERADA EN EL PIPELINE
+    signingConfigs {
+        release {
+            storeFile file("release-auto-key.jks")
+            storePassword "mi_contrasenia_secreta"
+            keyAlias "my-auto-alias"
+            keyPassword "mi_contrasenia_secreta"
+        }
     }
 
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.debug
+            signingConfig signingConfigs.release // Aplica la firma automática
         }
     }
     
@@ -28,7 +36,6 @@ android {
 }
 
 dependencies {
-    // Dependencias mínimas y esenciales para que reconozca clases como AppCompatActivity
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
