@@ -40,24 +40,11 @@ jobs:
         # Generar carpetas esenciales si no existen para evitar que Gradle falle
         if (!(Test-Path "mobile\app\src\main\res\values")) { New-Item -ItemType Directory -Force -Path "mobile\app\src\main\res\values" }
         
-        # Generar un AndroidManifest.xml básico si no existe
+        # Generar un AndroidManifest.xml básico de forma lineal y segura
         $manifestPath = "mobile\app\src\main\AndroidManifest.xml"
         if (!(Test-Path $manifestPath)) {
-            $manifestContent = @"
-            <?xml version="1.0" encoding="utf-8"?>
-            <manifest xmlns:android="http://android.com" package="com.wowmobile.client">
-                <uses-permission android:name="android.permission.INTERNET" />
-                <application android:label="WoW Dual Stream" android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
-                    <activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape">
-                        <intent-filter>
-                            <action android:name="android.intent.action.MAIN" />
-                            <category android:name="android.intent.category.LAUNCHER" />
-                        </intent-filter>
-                    </activity>
-                </application>
-            </manifest>
-            "@
-            Set-Content -Path $manifestPath -Value $manifestContent
+            $manifestContent = '<?xml version="1.0" encoding="utf-8"?><manifest xmlns:android="http://android.com" package="com.wowmobile.client"><uses-permission android:name="android.permission.INTERNET" /><application android:label="WoW Dual Stream" android:theme="@android:style/Theme.NoTitleBar.Fullscreen"><activity android:name=".MainActivity" android:exported="true" android:screenOrientation="landscape"><intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter></activity></application></manifest>'
+            Set-Content -Path $manifestPath -Value $manifestContent -Encoding UTF8
         }
       shell: powershell
 
