@@ -22,11 +22,12 @@ class Program
     {
         Console.WriteLine("=== WoW Dual Stream & Reduction Server ===");
         string wowPath = @"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe";
-        if (args.Length > 0) wowPath = args;
+        
+        // CORRECCIÓN 1: Leer el primer elemento del arreglo de argumentos
+        if (args.Length > 0) wowPath = args[0];
 
         try
         {
-            // 1. Lanzamos el juego limitando la afinidad a tu Ryzen 5600GT (Núcleos 4 y 5)
             ProcessStartInfo startInfo = new ProcessStartInfo { FileName = wowPath, Arguments = "-windowed" };
             Process? wowProcess = Process.Start(startInfo);
             
@@ -34,11 +35,10 @@ class Program
             {
                 wowProcess.WaitForInputIdle();
                 Thread.Sleep(2000);
-                wowProcess.ProcessorAffinity = (IntPtr)0x30; // Protege los núcleos principales de tu PC principal
+                wowProcess.ProcessorAffinity = (IntPtr)0x30;
                 IntPtr wowHandle = wowProcess.MainWindowHandle;
                 Console.WriteLine("[OK] Segunda instancia de WoW ejecutándose de manera aislada.");
 
-                // 2. Iniciamos el servidor de transmisión en red local offline
                 _streamServer = new TcpListener(IPAddress.Any, 8888);
                 _streamServer.Start();
                 Console.WriteLine("[OK] Servidor en línea. Esperando conexión de la pantalla móvil...");
@@ -48,10 +48,7 @@ class Program
                     TcpClient client = _streamServer.AcceptTcpClient();
                     Console.WriteLine("[INFO] Celular conectado para recibir stream e inputs.");
                     
-                    // Lanzar bucle de captura y reducción de video
                     ThreadPool.QueueUserWorkItem(state => ProcessAndStreamVideo(client, wowProcess));
-                    
-                    // Lanzar bucle de inyección de inputs asíncronos en segundo plano
                     ThreadPool.QueueUserWorkItem(state => HandleIncomingControls(client, wowHandle));
                 }
             }
@@ -63,7 +60,6 @@ class Program
         }
     }
 
-    // --- ENVIAR LA INSTANCIA GRÁFICA REDUCIDA ---
     private static void ProcessAndStreamVideo(TcpClient client, Process process)
     {
         using NetworkStream stream = client.GetStream();
@@ -71,7 +67,6 @@ class Program
         {
             try
             {
-                // REDUCCIÓN: Forzamos captura fija de 1280x720 para aliviar los gráficos integrados
                 using (Bitmap bmp = new Bitmap(1280, 720))
                 {
                     using (Graphics g = Graphics.FromImage(bmp))
@@ -82,7 +77,9 @@ class Program
                     using (MemoryStream ms = new MemoryStream())
                     {
                         EncoderParameters encoderParams = new EncoderParameters(1);
-                        encoderParams.Param = new EncoderParameter(Encoder.Quality, 60L); // Compresión rápida JPEG
+                        // CORRECCIÓN 2: Asignar un arreglo que contenga el parámetro de calidad
+                        encoderParams.Param = new EncoderParameter[] { new EncoderParameter(Encoder.Quality, 60L) }; 
+                        
                         ImageCodecInfo? jpegCodec = GetEncoder(ImageFormat.Jpeg);
                         
                         if (jpegCodec != null)
@@ -90,24 +87,22 @@ class Program
                             bmp.Save(ms, jpegCodec, encoderParams);
                             byte[] buffer = ms.ToArray();
 
-                            // Enviar tamaño del fotograma y luego los bytes crudos comprimidos
                             byte[] sizeBytes = BitConverter.GetBytes(buffer.Length);
                             stream.Write(sizeBytes, 0, sizeBytes.Length);
                             stream.Write(buffer, 0, buffer.Length);
                         }
                     }
                 }
-                Thread.Sleep(33); // Forzar 30 FPS estables para no saturar la red local offline
+                Thread.Sleep(33);
             }
             catch { break; }
         }
     }
 
-    // --- RECOGER LOS INPUTS DE TUS CONTROLES ---
     private static void HandleIncomingControls(TcpClient client, IntPtr wowWindowHandle)
     {
         using NetworkStream stream = client.GetStream();
-        byte[] buffer = new byte[2]; // Lee las ráfagas [Acción][Tecla] que genera tu interfaz táctil
+        byte[] buffer = new byte[2]; // Inicializar tamaño correcto del buffer de ráfaga
 
         while (client.Connected && wowWindowHandle != IntPtr.Zero)
         {
