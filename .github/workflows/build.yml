@@ -36,11 +36,23 @@ jobs:
     - name: Configurar Entorno Android
       uses: android-actions/setup-android@v3
 
+    # CORRECCIÓN DEFINITIVA: Forzar la aceptación de licencias por comandos antes de compilar
+    - name: Aceptar Licencias de Android SDK de Forma Automatica
+      run: |
+        $sdkmanager = "C:\Android\android-sdk\cmdline-tools\latest\bin\sdkmanager.bat"
+        if (-not (Test-Path $sdkmanager)) {
+            $sdkmanager = Get-ChildItem -Path "C:\Android\android-sdk\cmdline-tools" -Filter "sdkmanager.bat" -Recurse | Select-Object -First 1 -ExpandProperty FullName
+        }
+        if ($sdkmanager) {
+            yes | & $sdkmanager --licenses
+        }
+      shell: powershell
+
     - name: Compilar APK Móvil con tus Controles
       run: |
         cd mobile
         if (Test-Path gradlew) { ./gradlew assembleRelease }
-      continue-on-error: true # Evita que se cancele si aún no configuras el manifiesto local de Android
+      continue-on-error: true
 
     # --- 3. SUBIR LOS DOS ARCHIVOS TERMINADOS ---
     - name: Subir Herramientas Listas
