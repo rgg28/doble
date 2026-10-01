@@ -465,7 +465,7 @@ class DualRadialMenuView extends View {
         if (!activo) return;
 
         canvas.drawCircle(mX, mY, act.dp(25), pBase);
-List list = esMenuSuperior ? optsSuperior : optsInferior; // CORREGIDO: Declaración de tipo genérico estricta
+List<String> list = esMenuSuperior ? optsSuperior : optsInferior; // CORREGIDO: Declaración de tipo genérico estricta
 float step = (float) (Math.PI * 2 / list.size());
 float rMenu = act.dp(100);
 for (int i = 0; i < list.size(); i++) {
