@@ -82,13 +82,13 @@ jobs:
           -dname "CN=WowMobile, OU=Desarrollo, O=WowClient, L=Local, S=Local, C=ES"
       working-directory: ./mobile
 
-    # Inyecta los certificados dentro del binario para que Android lo reconozca
+    # Inyecta los certificados dentro del binario localizado para que Android lo reconozca
     - name: Firmar APK con apksigner de Android
       run: |
         BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
         echo "Usando build-tools desde: $BUILD_TOOLS_DIR"
         
-        UNSIGNED_APK=$(find mobile/app/build/outputs/apk/release/ -name "*-unsigned.apk" -o -name "*-release.apk" | head -n 1)
+        UNSIGNED_APK=$(find mobile/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
         echo "APK origen encontrado: $UNSIGNED_APK"
         
         $BUILD_TOOLS_DIR/apksigner sign \
@@ -97,7 +97,7 @@ jobs:
           --ks-pass pass:temporalwow123 \
           --key-pass pass:temporalwow123 \
           --out mobile/app/build/outputs/apk/release/WowMobile-Release-Firmado.apk \
-          $UNSIGNED_APK
+          "$UNSIGNED_APK"
           
         echo "[OK] ¡APK firmado con éxito!"
 
