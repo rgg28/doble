@@ -47,7 +47,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private TextView lblStreamStatus;
 
     private String targetRoomId = "";
-    private java.net.WebSocket webSocketClient;
+    private org.java_websocket.client.WebSocketClient webSocketClient;
     private volatile boolean isStreamingActive = false;
 
     private DPadView dPadView;
