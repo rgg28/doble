@@ -10,7 +10,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using SIPSorcery.Net; 
-using SIPSorceryMedia.Abstractions;
 
 class Program
 {
@@ -129,8 +128,8 @@ class Program
 
             _peerConnection = new RTCPeerConnection(config);
 
-            // CORRECCIÓN: Inicialización nativa de pista multimedia WebRTC compatible con SIPSorcery moderno
-            var videoTrack = new MediaStreamTrack(MediaStreamTrackKind.video, false, new System.Collections.Generic.List<VideoFormat> { new VideoFormat(VideoCodecsEnum.VP8, 96) }, "wow_video");
+            // CORRECCIÓN COMPLETA: Inicialización de pistas usando las enumeraciones nativas de SIPSorcery (SDPMediaTypesEnum)
+            var videoTrack = new MediaStreamTrack(SDPMediaTypesEnum.video, false, new System.Collections.Generic.List<SDPAudioVideoMediaFormat> { new SDPAudioVideoMediaFormat(new VideoFormat(VideoCodecsEnum.VP8, 96)) }, MediaStreamStatusEnum.SendOnly);
             _peerConnection.addTrack(videoTrack);
 
             var dataChannel = await _peerConnection.createDataChannel("wow_controls");
@@ -150,8 +149,8 @@ class Program
             });
 
             _isStreaming = true;
-            _ = Task.Run(() => VideoStreamingLoop(videoTrack));
-            _ = Task.Run(() => ListenForSignalingMessages());
+            _ = Task.Run(VideoStreamingLoop);
+            _ = Task.Run(ListenForSignalingMessages);
         }
         catch (Exception ex)
         {
@@ -160,7 +159,7 @@ class Program
         }
     }
 
-    private static async Task VideoStreamingLoop(MediaStreamTrack track)
+    private static async Task VideoStreamingLoop()
     {
         while (_isStreaming && _wowProcess != null && !_wowProcess.HasExited)
         {
@@ -178,8 +177,8 @@ class Program
                         bmp.Save(ms, ImageFormat.Bmp);
                         byte[] rawBmpBytes = ms.ToArray();
                         
-                        // Envío nativo hacia la tubería asíncrona RTP sin usar tipos de datos obsoletos
-                        track.OnVideoFrame?.Invoke(1280, 720, (int)(1280 * 3), rawBmpBytes, VideoPixelFormat.BGR24);
+                        // CORRECCIÓN COMPLETA: Envío de video nativo a través de la tubería del peer connection sin pasar por formatos abstractos
+                        _peerConnection?.SendVideo(1280, 720, rawBmpBytes, VideoPixelFormatsEnum.Bgr, VideoCodecsEnum.VP8);
                     }
                 }
                 await Task.Delay(33); 
@@ -202,8 +201,10 @@ class Program
                 if (message.Contains("\"type\":\"answer\""))
                 {
                     string base64Sdp = ExtractJsonValue(message, "sdp");
-                    string sdp = Encoding.UTF8.GetString(Convert.FromBase64String(base64Sdp));
-                    _peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionType.answer, sdp = sdp });
+                    string sdpStr = Encoding.UTF8.GetString(Convert.FromBase64String(base64Sdp));
+                    
+                    // CORRECCIÓN COMPLETA: Parseo nativo de la sesión SDP remota
+                    _peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionTypesEnum.answer, sdp = SDP.ParseSDPString(sdpStr) });
                 }
             }
             catch { break; }
@@ -212,13 +213,12 @@ class Program
 
     private static void HandleIncomingWebRtcControls(byte[] data)
     {
-        if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
-
-        byte type = data[0];
-        if (type == 0) 
-        {
-            byte action = data[1];
-            byte keyChar = data[2];
+if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
+byte type = data[0];
+if (type == 0)
+{
+byte action = data[1];
+byte keyChar = data[2];
 uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
 PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
 }
@@ -239,30 +239,28 @@ PostMessage(_wowHandle, mouseMsg, IntPtr.Zero, lParam);
 }
 }
 }
-    private static string ExtractJsonValue(string json, string key)
-    {
-        string search = "\"" + key + "\":\"";
-        int start = json.IndexOf(search);
-        if (start == -1) return "";
-        start += search.Length;
-        int end = json.IndexOf("\"", start);
-        if (end == -1) return "";
-        return json.Substring(start, end - start);
-    }
-
-    private static void ResetUI() 
-    { 
-        if (_btnStart != null && _btnStart.IsHandleCreated)
-        {
-            _btnStart.Invoke((MethodInvoker)(() => { 
-                _btnStart.Enabled = true; 
-                _btnBrowse!.Enabled = true; 
-                _txtWowPath!.Enabled = true; 
-                _txtConnectionId!.Enabled = true; 
-                _lblStatus!.Text = "Estado: Desconectado."; 
-                _lblStatus.ForeColor = Color.Gray; 
-            })); 
-        }
-    }
+private static string ExtractJsonValue(string json, string key)
+{
+string search = """ + key + "":"";
+int start = json.IndexOf(search);
+if (start == -1) return "";
+start += search.Length;
+int end = json.IndexOf(""", start);
+if (end == -1) return "";
+return json.Substring(start, end - start);
 }
-
+private static void ResetUI()
+{
+if (_btnStart != null && _btnStart.IsHandleCreated)
+{
+_btnStart.Invoke((MethodInvoker)(() => {
+_btnStart.Enabled = true;
+_btnBrowse!.Enabled = true;
+_txtWowPath!.Enabled = true;
+_txtConnectionId!.Enabled = true;
+_lblStatus!.Text = "Estado: Desconectado.";
+_lblStatus.ForeColor = Color.Gray;
+}));
+}
+}
+}
