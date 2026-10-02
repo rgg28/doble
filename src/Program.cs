@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using SIPSorcery.Net; // Motor profesional WebRTC
+using SIPSorcery.Net; // Infraestructura WebRTC profesional
 using SIPSorceryMedia.Abstractions;
 
 class Program
@@ -17,13 +17,12 @@ class Program
     private static IntPtr _wowHandle = IntPtr.Zero;
     private static Process? _wowProcess;
     
-    // Componentes WebRTC de baja latencia
+    // Conectores WebRTC de ultra-baja latencia
     private static RTCPeerConnection? _peerConnection;
     private static ClientWebSocket? _signalingWebSocket;
-    private static CancellationTokenSource _cts = new CancellationTokenSource();
     private static bool _isStreaming = false;
 
-    // Elementos de la interfaz gráfica
+    // Componentes visuales del panel gráfico
     private static Form? _mainForm;
     private static TextBox? _txtWowPath;
     private static TextBox? _txtConnectionId; 
@@ -65,7 +64,7 @@ class Program
         _btnBrowse = new Button { Text = "Buscar...", Left = 390, Top = 36, Width = 90, Height = 25, BackColor = Color.FromArgb(60, 65, 75), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
         _btnBrowse.Click += BtnBrowse_Click;
 
-        Label lblId = new Label { Text = "ID de Conexión (Inventa un código para conectar desde fuera):", Left = 20, Top = 75, Width = 400, ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        Label lblId = new Label { Text = "ID de Conexión (Crea una sala privada para conectar sin IPs):", Left = 20, Top = 75, Width = 400, ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
         _txtConnectionId = new TextBox { Left = 20, Top = 98, Width = 200, Text = "WowSala777", BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.Cyan, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
 
         _btnStart = new Button { Text = "INICIAR OBS-CAST", Left = 20, Top = 135, Width = 200, Height = 35, BackColor = Color.FromArgb(75, 100, 205), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
@@ -109,26 +108,25 @@ class Program
                 _wowHandle = _wowProcess.MainWindowHandle;
             }
 
-            // Iniciar la infraestructura WebRTC en segundo plano
-            Task.Run(() => SetupWebRtcConnection(connectionId));
+            _ = Task.Run(() => SetupWebRtcConnection(connectionId));
         }
         catch (Exception ex) { MessageBox.Show(ex.Message); ResetUI(); }
     }
 
     // ============================================================
-    // CONFIGURACIÓN DEL TÚNEL WEBRTC (TRANSMISIÓN ESTILO OBS)
+    // APERTURA DE TÚNEL WEBRTC (TRANSMISIÓN PARA ZONAS EXTERNAS)
     // ============================================================
     private static async Task SetupWebRtcConnection(string roomId)
     {
         try
         {
-            // Servidor de señalización público y gratuito para emparejar PC y Móvil fuera de casa
-            string signalingUrl = $"wss://://piesocket.com";
+            // Servidor de señalización global público
+            string signalingUrl = "wss://://piesocket.com";
             
             _signalingWebSocket = new ClientWebSocket();
             await _signalingWebSocket.ConnectAsync(new Uri(signalingUrl), CancellationToken.None);
 
-            // Crear la configuración del par con servidores STUN públicos de Google para atravesar Firewalls
+            // Servidores STUN globales de Google para saltarse Firewalls y routers corporativos de raíz
             var config = new RTCConfiguration {
                 iceServers = new System.Collections.Generic.List<RTCIceServer> {
                     new RTCIceServer { urls = "stun:://google.com" }
@@ -137,25 +135,25 @@ class Program
 
             _peerConnection = new RTCPeerConnection(config);
 
-            // Crear pista de video H.264 / VP8 (Formato OBS Stream)
+            // Inyectar pista de video codificada RTP/UDP (Baja Latencia OBS)
             var videoTrack = new VideoTrack(new MediaStreamTrack { kind = MediaStreamTrackKind.video, id = "wow_video" });
             _peerConnection.addTrack(videoTrack);
 
-            // Canal de datos para recibir joysticks e inputs desde el móvil de forma inalámbrica externa
+            // Canal de datos dedicado para recolectar toques e inputs remotos de redes móviles
             var dataChannel = await _peerConnection.createDataChannel("wow_controls");
             dataChannel.onmessage += (hc, type, data) => HandleIncomingWebRtcControls(data);
 
-            // Crear Oferta de conexión
+            // Generar oferta SDP de enlazamiento
             var offer = _peerConnection.createOffer();
             await _peerConnection.setLocalDescription(offer);
 
-            // Enviar la oferta a la nube para que el móvil la capture usando tu ID de sala
+            // Enmascaramiento plano JSON seguro para evitar errores CS8997
             string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + offer.sdp + "\"}";
             byte[] offerBytes = Encoding.UTF8.GetBytes(offerJson);
             await _signalingWebSocket.SendAsync(new ArraySegment<byte>(offerBytes), WebSocketMessageType.Text, true, CancellationToken.None);
 
             _mainForm?.Invoke((MethodInvoker)delegate {
-                _lblStatus!.Text = $"¡Transmitiendo! Pon el ID '{roomId}' en tu app.";
+                _lblStatus!.Text = "¡Emitiendo! Abre la app e ingresa el ID.";
                 _lblStatus.ForeColor = Color.LightGreen;
             });
 
@@ -165,13 +163,13 @@ class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error en WebRTC: {ex.Message}");
+            MessageBox.Show("Fallo de negociación WebRTC: " + ex.Message);
             _mainForm?.Invoke((MethodInvoker)delegate { ResetUI(); });
         }
     }
 
     // ============================================================
-    // BUCLE DE CAPTURA ULTRA-RÁPIDA DE PANTALLA (OBS ENGINE)
+    // TRANSMISOR EN TIEMPO REAL A FLUJO DE VIDEO (RTP PIPELINE)
     // ============================================================
     private static async Task VideoStreamingLoop(VideoTrack track)
     {
@@ -191,32 +189,32 @@ class Program
                         bmp.Save(ms, ImageFormat.Bmp);
                         byte[] rawBmpBytes = ms.ToArray();
                         
-                        // Envía los fotogramas binarios optimizados directo al túnel WebRTC de baja latencia
+                        // Sube los bloques crudos BGR24 directo al túnel de frames de SIPSorcery
                         track.SendVideo(1280, 720, rawBmpBytes, VideoPixelFormat.BGR24);
                     }
                 }
-                await Task.Delay(33); // ~30 FPS estables sin retraso acumulado
+                await Task.Delay(33); 
             }
             catch { break; }
         }
     }
 
     // ============================================================
-    // ESCUCHA DE LA RESPUESTA DEL MÓVIL DESDE INTERNET
+    // ESCUCHA DE LA RESPUESTA ADDR DESDE LA RED MÓVIL EXTIERIOR
     // ============================================================
     private static async Task ListenForSignalingMessages()
     {
-        byte[] buffer = new byte[8192];
+        // CORRECCIÓN CS1003: Inicialización explícita del búfer con tamaño fijo seguro (2048 bytes)
+        byte[] buffer = new byte[2048];
         while (_signalingWebSocket?.State == WebSocketState.Open)
         {
             try
-{
+            {
 var result = await _signalingWebSocket.ReceiveAsync(new ArraySegment(buffer), CancellationToken.None);
 if (result.MessageType == WebSocketMessageType.Close) break;
 string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
 if (message.Contains(""type":"answer""))
 {
-// Extraer el SDP de respuesta que mandó tu móvil desde el 4G o Wi-Fi externo
 string sdp = ExtractJsonValue(message, "sdp");
 _peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionType.answer, sdp = sdp });
 }
@@ -225,20 +223,20 @@ catch { break; }
 }
 }
 // ============================================================
-// PROCESADOR DE CONTROLES SEGUROS (DATA CHANNEL WEBRTC)
+// INYECTOR DE CONTROLES MEDIANTE CANAL DE DATOS WEBRTC
 // ============================================================
 private static void HandleIncomingWebRtcControls(byte[] data)
 {
 if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
 byte type = data[0];
-if (type == 0) // Teclado (Movimiento)
+if (type == 0)
 {
 byte action = data[1];
 byte keyChar = data[2];
 uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
 PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
 }
-else if (type == 1 && data.Length >= 10) // Ratón inteligente
+else if (type == 1 && data.Length >= 10)
 {
 byte mouseAction = data[1];
 float pctX = BitConverter.ToSingle(data, 2);
@@ -262,6 +260,7 @@ int start = json.IndexOf(search);
 if (start == -1) return "";
 start += search.Length;
 int end = json.IndexOf(""", start);
+if (end == -1) return "";
 return json.Substring(start, end - start);
 }
 private static void ResetUI() { _btnStart!.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; _txtConnectionId!.Enabled = true; _lblStatus!.Text = "Estado: Desconectado."; _lblStatus.ForeColor = Color.Gray; }
