@@ -9,9 +9,9 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
-  <!-- Versión parchada contra fallos criptográficos y caídas de canales de datos -->
   <ItemGroup>
     <PackageReference Include="SIPSorcery" Version="10.0.14" />
+    <PackageReference Include="SIPSorcery.VP8" Version="10.0.14" />
   </ItemGroup>
 
 </Project>
