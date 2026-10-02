@@ -15,7 +15,6 @@ android {
     buildTypes {
         release {
             minifyEnabled false
-            // Se eliminó la línea de signingConfig para que compile un APK limpio sin firmar
         }
     }
     
@@ -29,4 +28,7 @@ dependencies {
     implementation 'androidx.appcompat:appcompat:1.6.1'
     implementation 'com.google.android.material:material:1.11.0'
     implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    
+    // CORRECCIÓN AUTOMÁTICA: Librería para el túnel WebRTC global
+    implementation 'org.java-websocket:Java-WebSocket:1.5.4'
 }
