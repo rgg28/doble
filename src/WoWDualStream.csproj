@@ -9,9 +9,9 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
-  <!-- NUEVO: Librería de ultra-baja latencia WebRTC para C# -->
+  <!-- Versión protegida contra Denial of Service y fallos de streaming -->
   <ItemGroup>
-    <PackageReference Include="SIPSorcery" Version="6.0.7" />
+    <PackageReference Include="SIPSorcery" Version="10.0.9" />
   </ItemGroup>
 
 </Project>
