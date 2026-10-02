@@ -21,7 +21,7 @@ class Program
     private static ClientWebSocket? _signalingWebSocket;
     private static bool _isStreaming = false;
 
-    // Componentes de la UI limpia
+    // Componentes del panel gráfico
     private static Form? _mainForm;
     private static TextBox? _txtWowPath;
     private static TextBox? _txtConnectionId; 
@@ -138,7 +138,9 @@ class Program
             var offer = _peerConnection.createOffer();
             await _peerConnection.setLocalDescription(offer);
 
-            string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + Convert.ToBase64String(Encoding.UTF8.GetBytes(offer.sdp)) + "\"}";
+            // Formateo clásico sin interpolación ni caracteres de escape problemáticos para el parser
+            string base64Sdp = Convert.ToBase64String(Encoding.UTF8.GetBytes(offer.sdp));
+            string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + base64Sdp + "\"}";
             byte[] offerBytes = Encoding.UTF8.GetBytes(offerJson);
             await _signalingWebSocket.SendAsync(new ArraySegment<byte>(offerBytes), WebSocketMessageType.Text, true, CancellationToken.None);
 
@@ -186,7 +188,7 @@ class Program
 
     private static async Task ListenForSignalingMessages()
     {
-        byte[] buffer = new byte[4096];
+        byte[] buffer = new byte[2048];
         while (_signalingWebSocket?.State == WebSocketState.Open)
         {
             try
@@ -221,9 +223,8 @@ class Program
         else if (type == 1 && data.Length >= 10) 
         {
             byte mouseAction = data[1];
-            float pctX = BitConverter.ToSingle(data, 2);
-            float pctY = BitConverter.ToSingle(data, 6);
-
+float pctX = BitConverter.ToSingle(data, 2);
+float pctY = BitConverter.ToSingle(data, 6);
 if (GetClientRect(_wowHandle, out RECT rect))
 {
 int width = rect.Right - rect.Left;
