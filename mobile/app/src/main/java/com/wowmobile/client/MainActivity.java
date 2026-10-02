@@ -8,6 +8,7 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
+import android.net.wifi.WifiManager;
 import android.os.Bundle;
 import android.view.Gravity;
 import android.view.MotionEvent;
@@ -19,9 +20,13 @@ import android.widget.FrameLayout;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.StandardCharsets;
 
 public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
@@ -35,12 +40,14 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     private volatile boolean isRunning = false;
     private static final int PC_PORT = 8888;
+    private static final int UDP_PORT = 8889;
 
     private DPadView dPadView;
     private JumpButtonView jumpButtonView;
     private MapButtonView mapButtonView; 
 
-    // Colores UI originales heredados
+    private WifiManager.MulticastLock multicastLock;
+
     public static final int UI_BG_DARK = Color.argb(155, 5, 8, 13);
     public static final int UI_BORDER = Color.argb(120, 180, 195, 210);
     public static final int UI_BORDER_ACTIVE = Color.argb(215, 225, 235, 245);
@@ -56,6 +63,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 WindowManager.LayoutParams.FLAG_FULLSCREEN,
                 WindowManager.LayoutParams.FLAG_FULLSCREEN
         );
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         getWindow().setNavigationBarColor(Color.BLACK);
         getWindow().setStatusBarColor(Color.BLACK);
 
@@ -64,7 +72,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         mainContainer.setBackgroundColor(Color.rgb(3, 6, 10));
         setContentView(mainContainer);
 
-        // 1. Superficie de streaming con detector de impactos táctiles directos
         surfaceView = new SurfaceView(this);
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.addCallback(this);
@@ -77,7 +84,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         );
         mainContainer.addView(surfaceView, surfaceParams);
 
-        // 2. Control Izquierdo: El D-Pad de movimiento
         dPadView = new DPadView(this);
         FrameLayout.LayoutParams dPadParams = new FrameLayout.LayoutParams(
                 dp(150),
@@ -88,7 +94,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         dPadParams.bottomMargin = dp(22);
         mainContainer.addView(dPadView, dPadParams);
 
-        // 3. Control Derecho Inferior: Botón flotante para Saltar (Espacio)
         jumpButtonView = new JumpButtonView(this);
         FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(
                 dp(75),
@@ -99,7 +104,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         jumpParams.bottomMargin = dp(35);
         mainContainer.addView(jumpButtonView, jumpParams);
 
-        // 4. Control Derecho Superior: Botón flotante para el Mapa (Tecla M)
         mapButtonView = new MapButtonView(this);
         FrameLayout.LayoutParams mapParams = new FrameLayout.LayoutParams(
                 dp(60), 
@@ -110,25 +114,25 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         mapParams.bottomMargin = dp(125); 
         mainContainer.addView(mapButtonView, mapParams);
 
-        // 5. Iniciar flujo por el túnel inalámbrico local
-        isRunning = true;
-        new Thread(this::discoverAndStream, "WoW-TunnelStream").start();
+        // CONFIGURACIÓN CLAVE: Darle permisos a la antena para escuchar a la PC por el aire
+        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
+        if (wm != null) {
+            multicastLock = wm.createMulticastLock("WoW_Discovery_Lock");
+            multicastLock.acquire();
+        }
     }
 
     private void setupDirectTouchInteraction() {
         surfaceView.setOnTouchListener((v, event) -> {
             int action = event.getActionMasked();
-            
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) {
                 boolean pressed = (action == MotionEvent.ACTION_DOWN);
-                
                 float viewWidth = v.getWidth();
                 float viewHeight = v.getHeight();
 
                 if (viewWidth > 0 && viewHeight > 0) {
                     float pctX = event.getX() / viewWidth;
                     float pctY = event.getY() / viewHeight;
-
                     sendMouseClick(pctX, pctY, pressed);
                 }
             }
@@ -136,68 +140,83 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         });
     }
 
-    // ============================================================
-    // CONEXIÓN A TRAVÉS DEL TÚNEL INALÁMBRICO (ADB REVERSE)
-    // ============================================================
-
-    private void discoverAndStream() {
-        // CORRECCIÓN COMPLETA: Usamos 127.0.0.1 para que el túnel inalámbrico de red
-        // pase los datos del Wi-Fi al cable Ethernet de la PC saltándose el Firewall.
-        String discoveredIp = "127.0.0.1"; 
-
-        try {
-            socket = new Socket(discoveredIp, PC_PORT);
-            videoStream = socket.getInputStream();
-            commandStream = socket.getOutputStream();
-
-            byte[] sizeBuffer = new byte[4];
+    private void startStreamingThread() {
+        isRunning = true;
+        new Thread(() -> {
+            byte[] udpBuffer = new byte[1024];
 
             while (isRunning) {
-                int bytesRead = readFully(videoStream, sizeBuffer, 0, 4);
-                if (bytesRead != 4) break;
+                String discoveredIp = null;
 
-                int size = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
-                if (size <= 0 || size > 50 * 1024 * 1024) continue;
-
-                byte[] imgBuffer = new byte[size];
-                int read = readFully(videoStream, imgBuffer, 0, size);
-                if (read != size) break;
-
-                Bitmap bmp = BitmapFactory.decodeByteArray(imgBuffer, 0, imgBuffer.length);
-                if (bmp == null) continue;
-
-                if (!surfaceHolder.getSurface().isValid()) {
-                    bmp.recycle();
+                // 1. Escuchar el faro UDP de la PC a través del módem de la casa
+                try (DatagramSocket udpSocket = new DatagramSocket(UDP_PORT)) {
+                    udpSocket.setSoTimeout(3000); 
+                    DatagramPacket packet = new DatagramPacket(udpBuffer, udpBuffer.length);
+                    
+                    while (isRunning && discoveredIp == null) {
+                        try {
+                            udpSocket.receive(packet);
+                            String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
+                            if ("WOW_SERVER_HERE".equals(message)) {
+                                discoveredIp = packet.getAddress().getHostAddress();
+                            }
+                        } catch (Exception ignored) {}
+                    }
+                } catch (Exception e) {
+                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                     continue;
                 }
 
-                Canvas canvas = null;
+                if (discoveredIp == null) continue;
+
+                // 2. Conexión directa inalámbrica por TCP
                 try {
-                    canvas = surfaceHolder.lockCanvas();
-                    if (canvas != null) {
-                        canvas.drawColor(Color.BLACK);
-                        canvas.drawBitmap(bmp, null, canvas.getClipBounds(), null);
+                    socket = new Socket();
+                    socket.connect(new InetSocketAddress(discoveredIp, PC_PORT), 3000);
+                    videoStream = socket.getInputStream();
+                    commandStream = socket.getOutputStream();
+
+                    byte[] sizeBuffer = new byte[4];
+
+                    while (isRunning && !socket.isClosed()) {
+                        int bytesRead = readFully(videoStream, sizeBuffer, 0, 4);
+                        if (bytesRead != 4) break;
+
+                        int size = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
+                        if (size <= 0 || size > 50 * 1024 * 1024) continue;
+
+                        byte[] imgBuffer = new byte[size];
+                        int read = readFully(videoStream, imgBuffer, 0, size);
+                        if (read != size) break;
+
+                        Bitmap bmp = BitmapFactory.decodeByteArray(imgBuffer, 0, imgBuffer.length);
+                        if (bmp == null) continue;
+
+                        if (surfaceHolder.getSurface().isValid()) {
+                            Canvas canvas = null;
+                            try {
+                                canvas = surfaceHolder.lockCanvas();
+                                if (canvas != null) {
+                                    canvas.drawColor(Color.BLACK);
+                                    canvas.drawBitmap(bmp, null, canvas.getClipBounds(), null);
+                                }
+                            } finally {
+                                if (canvas != null) {
+                                    surfaceHolder.unlockCanvasAndPost(canvas);
+                                }
+                            }
+                        }
+                        bmp.recycle();
                     }
-                } finally {
-                    if (canvas != null) {
-                        surfaceHolder.unlockCanvasAndPost(canvas);
-                    }
-                    bmp.recycle();
+                } catch (Exception e) {
+                    try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
                 }
             }
-        } catch (Exception ignored) {
-        } finally {
-            closeConnection();
-        }
+        }, "WoW-WirelessDiscovery").start();
     }
-
-    // ============================================================
-    // ENVÍO DE COMANDOS
-    // ============================================================
 
     public synchronized void sendStroke(String key, boolean pressed) {
         if (commandStream == null || key == null || key.isEmpty()) return;
-
         try {
             byte[] packet = new byte[]{
                     (byte) 0, 
@@ -211,16 +230,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     public synchronized void sendMouseClick(float pctX, float pctY, boolean pressed) {
         if (commandStream == null) return;
-
         try {
             ByteBuffer buffer = ByteBuffer.allocate(10);
             buffer.order(ByteOrder.LITTLE_ENDIAN);
-            
             buffer.put((byte) 1); 
             buffer.put((byte) (pressed ? 1 : 0));
             buffer.putFloat(pctX);
             buffer.putFloat(pctY);
-
             commandStream.write(buffer.array());
             commandStream.flush();
         } catch (Exception ignored) {}
@@ -234,37 +250,38 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             total += result;
         }
         return total;
-    }
-
-    private synchronized void closeConnection() {
-        isRunning = false;
-        try { if (videoStream != null) videoStream.close(); } catch (Exception ignored) {}
-        try { if (commandStream != null) commandStream.close(); } catch (Exception ignored) {}
-        try { if (socket != null) socket.close(); } catch (Exception ignored) {}
-        videoStream = null;
-        commandStream = null;
-        socket = null;
-    }
-
-    public int dp(float value) {
-        return Math.round(value * getResources().getDisplayMetrics().density);
-    }
-
-    public float dpf(float value) {
-        return value * getResources().getDisplayMetrics().density;
-    }
-
-    @Override public void surfaceCreated(SurfaceHolder holder) {}
-    @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {}
-    @Override public void surfaceDestroyed(SurfaceHolder holder) { isRunning = false; closeConnection(); }
-    @Override protected void onDestroy() { isRunning = false; closeConnection(); super.onDestroy(); }
-
-    // ============================================================
-    // VISTA DEL BOTÓN DE MAPA
-    // ============================================================
-
-    private static class MapButtonView extends View {
-        private final MainActivity act;
+}
+private synchronized void closeConnection() {
+try { if (videoStream != null) videoStream.close(); } catch (Exception ignored) {}
+try { if (commandStream != null) commandStream.close(); } catch (Exception ignored) {}
+try { if (socket != null) socket.close(); } catch (Exception ignored) {}
+videoStream = null;
+commandStream = null;
+socket = null;
+}
+public int dp(float value) {
+return Math.round(value * getResources().getDisplayMetrics().density);
+}
+public float dpf(float value) {
+return value * getResources().getDisplayMetrics().density;
+}
+@Override public void surfaceCreated(SurfaceHolder holder) { startStreamingThread(); }
+@Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {}
+@Override public void surfaceDestroyed(SurfaceHolder holder) { isRunning = false; closeConnection(); }
+@Override
+protected void onDestroy() {
+isRunning = false;
+closeConnection();
+if (multicastLock != null && multicastLock.isHeld()) {
+multicastLock.release(); // Libera la antena al cerrar la app
+}
+super.onDestroy();
+}
+// ============================================================
+// COMPONENTES GRÁFICOS INTERNOS (VISTAS)
+// ============================================================
+private static class MapButtonView extends View {
+private final MainActivity act;
 private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -314,9 +331,6 @@ return true;
 return super.onTouchEvent(event);
 }
 }
-// ============================================================
-// VISTA DEL BOTÓN DE SALTO
-// ============================================================
 private static class JumpButtonView extends View {
 private final MainActivity act;
 private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -368,9 +382,6 @@ return true;
 return super.onTouchEvent(event);
 }
 }
-// ============================================================
-// VISTA DEL D-PAD (Movimiento)
-// ============================================================
 private static class DPadView extends View {
 private final MainActivity act;
 private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -459,7 +470,6 @@ dy *= scale;
 }
 stickX = centerX + dx;
 stickY = centerY + dy;
-// Arreglos de tamaño fijo aplicados correctamente en la lógica del pad
 boolean newW = dy < -outerRadius * 0.20f;
 boolean newS = dy > outerRadius * 0.20f;
 boolean newA = dx < -outerRadius * 0.20f;
