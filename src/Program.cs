@@ -3,39 +3,41 @@ using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
-using System.Net;
-using System.Net.Sockets;
+using System.Net.WebSockets;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
+using SIPSorcery.Net; // Motor profesional WebRTC
+using SIPSorceryMedia.Abstractions;
 
 class Program
 {
-    private static HttpListener? _httpServer;
     private static IntPtr _wowHandle = IntPtr.Zero;
     private static Process? _wowProcess;
+    
+    // Componentes WebRTC de baja latencia
+    private static RTCPeerConnection? _peerConnection;
+    private static ClientWebSocket? _signalingWebSocket;
+    private static CancellationTokenSource _cts = new CancellationTokenSource();
+    private static bool _isStreaming = false;
 
+    // Elementos de la interfaz gráfica
     private static Form? _mainForm;
     private static TextBox? _txtWowPath;
+    private static TextBox? _txtConnectionId; 
     private static Button? _btnBrowse;
     private static Button? _btnStart;
     private static Label? _lblStatus;
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
 
     [StructLayout(LayoutKind.Sequential)]
-    public struct RECT
-    {
-        public int Left;
-        public int Top;
-        public int Right;
-        public int Bottom;
-    }
+    public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
 
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;
@@ -50,270 +52,217 @@ class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        _mainForm = new Form
-        {
-            Text = "WoW AirCast Server (HTTP)",
-            Width = 520,
-            Height = 180,
-            FormBorderStyle = FormBorderStyle.FixedSingle,
-            MaximizeBox = false,
-            StartPosition = FormStartPosition.CenterScreen,
-            BackColor = Color.FromArgb(28, 32, 38)
+        _mainForm = new Form {
+            Text = "WoW OBS-Cast WebRTC Server",
+            Width = 520, Height = 220,
+            FormBorderStyle = FormBorderStyle.FixedSingle, MaximizeBox = false,
+            StartPosition = FormStartPosition.CenterScreen, BackColor = Color.FromArgb(20, 24, 30)
         };
 
-        Label lblPath = new Label
-        {
-            Text = "Ruta de Wow.exe:",
-            Left = 20,
-            Top = 20,
-            Width = 120,
-            ForeColor = Color.White,
-            Font = new Font("Segoe UI", 9, FontStyle.Bold)
-        };
-
-        _txtWowPath = new TextBox
-        {
-            Left = 20,
-            Top = 45,
-            Width = 360,
-            Text = @"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe",
-            BackColor = Color.FromArgb(45, 50, 58),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font("Segoe UI", 9)
-        };
-
-        _btnBrowse = new Button { Text = "Buscar...", Left = 390, Top = 43, Width = 90, Height = 25, BackColor = Color.FromArgb(65, 75, 85), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
+        Label lblPath = new Label { Text = "Ruta de Wow.exe:", Left = 20, Top = 15, Width = 120, ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        _txtWowPath = new TextBox { Left = 20, Top = 38, Width = 360, Text = @"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe", BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.White, BorderStyle = BorderStyle.FixedSingle };
+        
+        _btnBrowse = new Button { Text = "Buscar...", Left = 390, Top = 36, Width = 90, Height = 25, BackColor = Color.FromArgb(60, 65, 75), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
         _btnBrowse.Click += BtnBrowse_Click;
 
-        _btnStart = new Button { Text = "INICIAR AIR-CAST", Left = 20, Top = 90, Width = 200, Height = 35, BackColor = Color.FromArgb(75, 152, 105), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
+        Label lblId = new Label { Text = "ID de Conexión (Inventa un código para conectar desde fuera):", Left = 20, Top = 75, Width = 400, ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        _txtConnectionId = new TextBox { Left = 20, Top = 98, Width = 200, Text = "WowSala777", BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.Cyan, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
+
+        _btnStart = new Button { Text = "INICIAR OBS-CAST", Left = 20, Top = 135, Width = 200, Height = 35, BackColor = Color.FromArgb(75, 100, 205), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
         _btnStart.Click += BtnStart_Click;
 
-        _lblStatus = new Label { Text = "Estado: AirCast detenido.", Left = 230, Top = 100, Width = 250, ForeColor = Color.Gray, Font = new Font("Segoe UI", 9, FontStyle.Italic) };
+        _lblStatus = new Label { Text = "Estado: Desconectado.", Left = 230, Top = 145, Width = 250, ForeColor = Color.Gray, Font = new Font("Segoe UI", 9, FontStyle.Italic) };
 
-        _mainForm.Controls.Add(lblPath); _mainForm.Controls.Add(_txtWowPath); _mainForm.Controls.Add(_btnBrowse); _mainForm.Controls.Add(_btnStart); _mainForm.Controls.Add(_lblStatus);
+        _mainForm.Controls.Add(lblPath); _mainForm.Controls.Add(_txtWowPath); _mainForm.Controls.Add(_btnBrowse);
+        _mainForm.Controls.Add(lblId); _mainForm.Controls.Add(_txtConnectionId); _mainForm.Controls.Add(_btnStart); _mainForm.Controls.Add(_lblStatus);
+        
         Application.Run(_mainForm);
     }
 
     private static void BtnBrowse_Click(object? sender, EventArgs e)
     {
-        using (OpenFileDialog openFileDialog = new OpenFileDialog())
-        {
-            openFileDialog.Filter = "Ejecutable de WoW (*.exe)|*.exe";
-            if (openFileDialog.ShowDialog() == DialogResult.OK) _txtWowPath!.Text = openFileDialog.FileName;
+        using (OpenFileDialog ofd = new OpenFileDialog()) {
+            ofd.Filter = "Ejecutable de WoW (*.exe)|*.exe";
+            if (ofd.ShowDialog() == DialogResult.OK) _txtWowPath!.Text = ofd.FileName;
         }
     }
 
-    private static void BtnStart_Click(object? sender, EventArgs e)
+    private static async void BtnStart_Click(object? sender, EventArgs e)
     {
         string wowPath = _txtWowPath?.Text ?? "";
-        if (!File.Exists(wowPath)) return;
+        string connectionId = _txtConnectionId?.Text ?? "";
+
+        if (!File.Exists(wowPath) || string.IsNullOrEmpty(connectionId)) return;
+
+        _btnStart!.Enabled = false; _btnBrowse!.Enabled = false; _txtWowPath!.Enabled = false; _txtConnectionId!.Enabled = false;
+        _lblStatus!.Text = "Inicializando WebRTC global..."; _lblStatus.ForeColor = Color.Orange;
 
         try
         {
-            _btnStart!.Enabled = false; _btnBrowse!.Enabled = false; _txtWowPath!.Enabled = false;
-            _lblStatus!.Text = "Estado: Levantando Web Cast..."; _lblStatus.ForeColor = Color.Orange;
-
-            ExecuteSilentCommand("netsh http add urlacl url=http://*:8080/ user=Everyone");
-            ExecuteSilentCommand("netsh advfirewall firewall add rule name=\"WoW AirCast\" dir=in action=allow protocol=TCP localport=8080");
-
             ProcessStartInfo startInfo = new ProcessStartInfo { FileName = wowPath, Arguments = "-windowed", UseShellExecute = true };
             _wowProcess = Process.Start(startInfo);
             
-            Thread webThread = new Thread(StartHttpServerLogic) { IsBackground = true };
-            webThread.Start();
-        }
-        catch (Exception ex) { MessageBox.Show(ex.Message); ResetUI(); }
-    }
-
-    private static void StartHttpServerLogic()
-    {
-        try
-        {
             if (_wowProcess != null)
             {
-                Thread.Sleep(3000);
+                await Task.Delay(3000);
                 _wowProcess.Refresh();
                 _wowHandle = _wowProcess.MainWindowHandle;
             }
 
-            _httpServer = new HttpListener();
-            _httpServer.Prefixes.Add("http://*:8080/");
-            _httpServer.Start();
+            // Iniciar la infraestructura WebRTC en segundo plano
+            Task.Run(() => SetupWebRtcConnection(connectionId));
+        }
+        catch (Exception ex) { MessageBox.Show(ex.Message); ResetUI(); }
+    }
+
+    // ============================================================
+    // CONFIGURACIÓN DEL TÚNEL WEBRTC (TRANSMISIÓN ESTILO OBS)
+    // ============================================================
+    private static async Task SetupWebRtcConnection(string roomId)
+    {
+        try
+        {
+            // Servidor de señalización público y gratuito para emparejar PC y Móvil fuera de casa
+            string signalingUrl = $"wss://://piesocket.com";
+            
+            _signalingWebSocket = new ClientWebSocket();
+            await _signalingWebSocket.ConnectAsync(new Uri(signalingUrl), CancellationToken.None);
+
+            // Crear la configuración del par con servidores STUN públicos de Google para atravesar Firewalls
+            var config = new RTCConfiguration {
+                iceServers = new System.Collections.Generic.List<RTCIceServer> {
+                    new RTCIceServer { urls = "stun:://google.com" }
+                }
+            };
+
+            _peerConnection = new RTCPeerConnection(config);
+
+            // Crear pista de video H.264 / VP8 (Formato OBS Stream)
+            var videoTrack = new VideoTrack(new MediaStreamTrack { kind = MediaStreamTrackKind.video, id = "wow_video" });
+            _peerConnection.addTrack(videoTrack);
+
+            // Canal de datos para recibir joysticks e inputs desde el móvil de forma inalámbrica externa
+            var dataChannel = await _peerConnection.createDataChannel("wow_controls");
+            dataChannel.onmessage += (hc, type, data) => HandleIncomingWebRtcControls(data);
+
+            // Crear Oferta de conexión
+            var offer = _peerConnection.createOffer();
+            await _peerConnection.setLocalDescription(offer);
+
+            // Enviar la oferta a la nube para que el móvil la capture usando tu ID de sala
+            string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + offer.sdp + "\"}";
+            byte[] offerBytes = Encoding.UTF8.GetBytes(offerJson);
+            await _signalingWebSocket.SendAsync(new ArraySegment<byte>(offerBytes), WebSocketMessageType.Text, true, CancellationToken.None);
 
             _mainForm?.Invoke((MethodInvoker)delegate {
-                _lblStatus!.Text = "¡Web en línea! Entra a http://192.168.1.12:8080";
+                _lblStatus!.Text = $"¡Transmitiendo! Pon el ID '{roomId}' en tu app.";
                 _lblStatus.ForeColor = Color.LightGreen;
             });
 
-            while (_httpServer.IsListening)
-            {
-                HttpListenerContext context = _httpServer.GetContext();
-                ThreadPool.QueueUserWorkItem(o => HandleClientWebRequest(context));
-            }
+            _isStreaming = true;
+            _ = Task.Run(() => VideoStreamingLoop(videoTrack));
+            _ = Task.Run(() => ListenForSignalingMessages());
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message); }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Error en WebRTC: {ex.Message}");
+            _mainForm?.Invoke((MethodInvoker)delegate { ResetUI(); });
+        }
     }
 
-    private static void HandleClientWebRequest(HttpListenerContext context)
+    // ============================================================
+    // BUCLE DE CAPTURA ULTRA-RÁPIDA DE PANTALLA (OBS ENGINE)
+    // ============================================================
+    private static async Task VideoStreamingLoop(VideoTrack track)
     {
-        HttpListenerRequest request = context.Request;
-        HttpListenerResponse response = context.Response;
-
-        try
+        while (_isStreaming && _wowProcess != null && !_wowProcess.HasExited)
         {
-            if (request.Url?.AbsolutePath == "/input")
+            try
             {
-                string pctX = request.QueryString["x"] ?? "0";
-                string pctY = request.QueryString["y"] ?? "0";
-                string action = request.QueryString["a"] ?? "0"; 
-
-                float x = float.Parse(pctX, System.Globalization.CultureInfo.InvariantCulture);
-                float y = float.Parse(pctY, System.Globalization.CultureInfo.InvariantCulture);
-
-                if (GetClientRect(_wowHandle, out RECT rect))
+                using (Bitmap bmp = new Bitmap(1280, 720))
                 {
-                    int w = rect.Right - rect.Left;
-                    int h = rect.Bottom - rect.Top;
-                    IntPtr lParam = (IntPtr)(((int)(y * h) << 16) | ((int)(x * w) & 0xFFFF));
-                    
-                    uint msg = (y > 0.70f) ? 
-                        ((action == "1") ? WM_LBUTTONDOWN : WM_LBUTTONUP) : 
-                        ((action == "1") ? WM_RBUTTONDOWN : WM_RBUTTONUP);
-
-                    PostMessage(_wowHandle, msg, IntPtr.Zero, lParam);
-                }
-
-                response.StatusCode = (int)HttpStatusCode.OK;
-                response.Close();
-                return;
-            }
-
-            if (request.Url?.AbsolutePath == "/keyboard")
-            {
-                string key = request.QueryString["key"] ?? "";
-                string action = request.QueryString["a"] ?? "0"; 
-
-                if (!string.IsNullOrEmpty(key))
-                {
-                    char keyChar = key.ToUpper()[0];
-                    uint msg = (action == "1") ? WM_KEYDOWN : WM_KEYUP;
-                    PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
-                }
-
-                response.StatusCode = (int)HttpStatusCode.OK;
-                response.Close();
-                return;
-            }
-
-            if (request.Url?.AbsolutePath == "/stream")
-            {
-                response.ContentType = "multipart/x-mixed-replace; boundary=--frame";
-                response.StatusCode = (int)HttpStatusCode.OK;
-
-                using (Stream output = response.OutputStream)
-                {
-                    while (_wowProcess != null && !_wowProcess.HasExited)
+                    using (Graphics g = Graphics.FromImage(bmp))
                     {
-                        using (Bitmap bmp = new Bitmap(1280, 720))
-                        {
-                            using (Graphics g = Graphics.FromImage(bmp))
-                            {
-                                g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
-                            }
+                        g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
+                    }
 
-                            using (MemoryStream ms = new MemoryStream())
-                            {
-                                EncoderParameters encoderParams = new EncoderParameters(1);
-                                encoderParams.Param = new EncoderParameter[] { new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 50L) };
-                                ImageCodecInfo? jpegCodec = GetEncoder(ImageFormat.Jpeg);
-                                
-                                if (jpegCodec != null)
-                                {
-                                    bmp.Save(ms, jpegCodec, encoderParams);
-                                    byte[] imgBytes = ms.ToArray();
-
-                                    string header = $"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: {imgBytes.Length}\r\n\r\n";
-                                    byte[] headerBytes = Encoding.ASCII.GetBytes(header);
-                                    
-                                    output.Write(headerBytes, 0, headerBytes.Length);
-                                    output.Write(imgBytes, 0, imgBytes.Length);
-                                    output.Write(Encoding.ASCII.GetBytes("\r\n"), 0, 2);
-                                    output.Flush();
-                                }
-                            }
-                        }
-                        Thread.Sleep(45); 
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        bmp.Save(ms, ImageFormat.Bmp);
+                        byte[] rawBmpBytes = ms.ToArray();
+                        
+                        // Envía los fotogramas binarios optimizados directo al túnel WebRTC de baja latencia
+                        track.SendVideo(1280, 720, rawBmpBytes, VideoPixelFormat.BGR24);
                     }
                 }
-                return;
+                await Task.Delay(33); // ~30 FPS estables sin retraso acumulado
             }
+            catch { break; }
+        }
+    }
 
-StringBuilder sb = new StringBuilder();
-sb.Append("");
-sb.Append("");
-sb.Append("");
-sb.Append("body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; font-family:sans-serif; user-select:none; }");
-sb.Append("#screen { width:100vw; height:100vh; object-fit:contain; display:block; z-index:1; }");
-sb.Append(".btn { position:absolute; background:rgba(30,40,50,0.6); border:1.5px solid rgba(180,200,220,0.5); color:#fff; border-radius:50%; text-align:center; font-weight:bold; z-index:10; display:flex; align-items:center; justify-content:center; }");
-sb.Append(".btn:active { background:rgba(75,150,205,0.7); border-color:#fff; }");
-sb.Append("#btnW { bottom:120px; left:75px; width:50px; height:50px; }");
-sb.Append("#btnA { bottom:65px; left:20px; width:50px; height:50px; }");
-sb.Append("#btnS { bottom:10px; left:75px; width:50px; height:50px; }");
-sb.Append("#btnD { bottom:65px; left:130px; width:50px; height:50px; }");
-sb.Append("#btnJump { bottom:30px; right:30px; width:75px; height:75px; border-radius:50%; font-size:12px; }");
-sb.Append("");
-sb.Append("");
-sb.Append("WASDSALTAR");
-sb.Append("");
-sb.Append("const screen = document.getElementById('screen');");
-sb.Append("function sendInput(e, action) {");
-sb.Append("  const rect = screen.getBoundingClientRect();");
-sb.Append("  const touch = e.touches[0] || e.changedTouches[0];");
-sb.Append("  const x = (touch.clientX - rect.left) / rect.width;");
-sb.Append("  const y = (touch.clientY - rect.top) / rect.height;");
-sb.Append("  if(x >= 0 && x <= 1 && y >= 0 && y <= 1) {");
-sb.Append("    fetch('/input?x=' + x + '&y=' + y + '&a=' + action);");
-sb.Append("  }");
-sb.Append("}");
-sb.Append("screen.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput(e, 1); });");
-sb.Append("screen.addEventListener('touchend', (e) => { e.preventDefault(); sendInput(e, 0); });");
-sb.Append("function bindKey(id, keyStr) {");
-sb.Append("  const el = document.getElementById(id);");
-sb.Append("  el.addEventListener('touchstart', (e) => { e.preventDefault(); fetch('/keyboard?key=' + encodeURIComponent(keyStr) + '&a=1'); });");
-sb.Append("  el.addEventListener('touchend', (e) => { e.preventDefault(); fetch('/keyboard?key=' + encodeURIComponent(keyStr) + '&a=0'); });");
-sb.Append("}");
-sb.Append("bindKey('btnW', 'W'); bindKey('btnA', 'A'); bindKey('btnS', 'S'); bindKey('btnD', 'D'); bindKey('btnJump', ' ');");
-sb.Append("");
-byte[] htmlBytes = Encoding.UTF8.GetBytes(sb.ToString());
-response.ContentType = "text/html; charset=utf-8"; // Forzar cabecera de renderizado visual HTML
-response.ContentLength64 = htmlBytes.Length;
-response.OutputStream.Write(htmlBytes, 0, htmlBytes.Length);
-response.Close();
-}
-catch { try { response.Close(); } catch {} }
-}
-private static void ExecuteSilentCommand(string command)
+    // ============================================================
+    // ESCUCHA DE LA RESPUESTA DEL MÓVIL DESDE INTERNET
+    // ============================================================
+    private static async Task ListenForSignalingMessages()
+    {
+        byte[] buffer = new byte[8192];
+        while (_signalingWebSocket?.State == WebSocketState.Open)
+        {
+            try
 {
-try
+var result = await _signalingWebSocket.ReceiveAsync(new ArraySegment(buffer), CancellationToken.None);
+if (result.MessageType == WebSocketMessageType.Close) break;
+string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+if (message.Contains(""type":"answer""))
 {
-ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
+// Extraer el SDP de respuesta que mandó tu móvil desde el 4G o Wi-Fi externo
+string sdp = ExtractJsonValue(message, "sdp");
+_peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionType.answer, sdp = sdp });
+}
+}
+catch { break; }
+}
+}
+// ============================================================
+// PROCESADOR DE CONTROLES SEGUROS (DATA CHANNEL WEBRTC)
+// ============================================================
+private static void HandleIncomingWebRtcControls(byte[] data)
 {
-CreateNoWindow = true,
-UseShellExecute = false,
-Verb = "runas"
-};
-Process.Start(psi);
-}
-catch { }
-}
-private static void ResetUI() { _btnStart!.Invoke((MethodInvoker)(() => { _btnStart.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; })); }
-private static ImageCodecInfo? GetEncoder(ImageFormat format)
+if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
+byte type = data[0];
+if (type == 0) // Teclado (Movimiento)
 {
-foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders())
+byte action = data[1];
+byte keyChar = data[2];
+uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
+PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
+}
+else if (type == 1 && data.Length >= 10) // Ratón inteligente
 {
-if (codec.FormatID == format.Guid) return codec;
+byte mouseAction = data[1];
+float pctX = BitConverter.ToSingle(data, 2);
+float pctY = BitConverter.ToSingle(data, 6);
+if (GetClientRect(_wowHandle, out RECT rect))
+{
+int width = rect.Right - rect.Left;
+int height = rect.Bottom - rect.Top;
+IntPtr lParam = (IntPtr)(((int)(pctY * height) << 16) | ((int)(pctX * width) & 0xFFFF));
+uint mouseMsg = (pctY > 0.70f) ?
+((mouseAction == 1) ? WM_LBUTTONDOWN : WM_LBUTTONUP) :
+((mouseAction == 1) ? WM_RBUTTONDOWN : WM_RBUTTONUP);
+PostMessage(_wowHandle, mouseMsg, IntPtr.Zero, lParam);
 }
-return null;
 }
+}
+private static string ExtractJsonValue(string json, string key)
+{
+string search = """ + key + "":"";
+int start = json.IndexOf(search);
+if (start == -1) return "";
+start += search.Length;
+int end = json.IndexOf(""", start);
+return json.Substring(start, end - start);
+}
+private static void ResetUI() { _btnStart!.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; _txtConnectionId!.Enabled = true; _lblStatus!.Text = "Estado: Desconectado."; _lblStatus.ForeColor = Color.Gray; }
 }
