@@ -128,7 +128,6 @@ class Program
 
             _peerConnection = new RTCPeerConnection(config);
 
-            // CORRECCIÓN COMPLETA: Inicialización de pistas usando las enumeraciones nativas de SIPSorcery (SDPMediaTypesEnum)
             var videoTrack = new MediaStreamTrack(SDPMediaTypesEnum.video, false, new System.Collections.Generic.List<SDPAudioVideoMediaFormat> { new SDPAudioVideoMediaFormat(new VideoFormat(VideoCodecsEnum.VP8, 96)) }, MediaStreamStatusEnum.SendOnly);
             _peerConnection.addTrack(videoTrack);
 
@@ -176,8 +175,6 @@ class Program
                     {
                         bmp.Save(ms, ImageFormat.Bmp);
                         byte[] rawBmpBytes = ms.ToArray();
-                        
-                        // CORRECCIÓN COMPLETA: Envío de video nativo a través de la tubería del peer connection sin pasar por formatos abstractos
                         _peerConnection?.SendVideo(1280, 720, rawBmpBytes, VideoPixelFormatsEnum.Bgr, VideoCodecsEnum.VP8);
                     }
                 }
@@ -202,8 +199,6 @@ class Program
                 {
                     string base64Sdp = ExtractJsonValue(message, "sdp");
                     string sdpStr = Encoding.UTF8.GetString(Convert.FromBase64String(base64Sdp));
-                    
-                    // CORRECCIÓN COMPLETA: Parseo nativo de la sesión SDP remota
                     _peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionTypesEnum.answer, sdp = SDP.ParseSDPString(sdpStr) });
                 }
             }
@@ -213,18 +208,18 @@ class Program
 
     private static void HandleIncomingWebRtcControls(byte[] data)
     {
-if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
-byte type = data[0];
-if (type == 0)
-{
-byte action = data[1];
-byte keyChar = data[2];
-uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
-PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
-}
-else if (type == 1 && data.Length >= 10)
-{
-byte mouseAction = data[1];
+        if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
+        byte type = data[0];
+        if (type == 0)
+        {
+            byte action = data[1];
+            byte keyChar = data[2];
+            uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
+            PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
+        }
+        else if (type == 1 && data.Length >= 10)
+        {
+            byte mouseAction = data[1];
 float pctX = BitConverter.ToSingle(data, 2);
 float pctY = BitConverter.ToSingle(data, 6);
 if (GetClientRect(_wowHandle, out RECT rect))
@@ -232,30 +227,38 @@ if (GetClientRect(_wowHandle, out RECT rect))
 int width = rect.Right - rect.Left;
 int height = rect.Bottom - rect.Top;
 IntPtr lParam = (IntPtr)(((int)(pctY * height) << 16) | ((int)(pctX * width) & 0xFFFF));
-uint mouseMsg = (pctY > 0.70f) ?
-((mouseAction == 1) ? WM_LBUTTONDOWN : WM_LBUTTONUP) :
-((mouseAction == 1) ? WM_RBUTTONDOWN : WM_RBUTTONUP);
+uint mouseMsg = (pctY > 0.70f) ? ((mouseAction == 1) ? WM_LBUTTONDOWN : WM_LBUTTONUP) : ((mouseAction == 1) ? WM_RBUTTONDOWN : WM_RBUTTONUP);
 PostMessage(_wowHandle, mouseMsg, IntPtr.Zero, lParam);
 }
 }
 }
-    private static string ExtractJsonValue(string json, string key)
-    {
-        return json.Split(new[] { "\"" + key + "\":\"" }, StringSplitOptions.None)[1].Split('"')[0];
-    }
-
-    private static void ResetUI() 
-    { 
-        if (_btnStart != null && _btnStart.IsHandleCreated)
-        {
-            _btnStart.Invoke((MethodInvoker)(() => { 
-                _btnStart.Enabled = true; 
-                _btnBrowse!.Enabled = true; 
-                _txtWowPath!.Enabled = true; 
-                _txtConnectionId!.Enabled = true; 
-                _lblStatus!.Text = "Estado: Desconectado."; 
-                _lblStatus.ForeColor = Color.Gray; 
-            })); 
-        }
-    }
+private static string ExtractJsonValue(string json, string key)
+{
+try
+{
+using (System.Text.Json.JsonDocument doc = System.Text.Json.JsonDocument.Parse(json))
+{
+if (doc.RootElement.TryGetProperty(key, out System.Text.Json.JsonElement element))
+{
+return element.GetString() ?? "";
+}
+}
+}
+catch { }
+return "";
+}
+private static void ResetUI()
+{
+if (_btnStart != null && _btnStart.IsHandleCreated)
+{
+_btnStart.Invoke((MethodInvoker)(() => {
+_btnStart.Enabled = true;
+_btnBrowse!.Enabled = true;
+_txtWowPath!.Enabled = true;
+_txtConnectionId!.Enabled = true;
+_lblStatus!.Text = "Estado: Desconectado.";
+_lblStatus.ForeColor = Color.Gray;
+}));
+}
+}
 }
