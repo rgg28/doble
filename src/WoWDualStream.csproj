@@ -9,9 +9,9 @@
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
 
-  <!-- Versión protegida contra Denial of Service y fallos de streaming -->
+  <!-- Versión parchada contra fallos criptográficos y caídas de canales de datos -->
   <ItemGroup>
-    <PackageReference Include="SIPSorcery" Version="10.0.9" />
+    <PackageReference Include="SIPSorcery" Version="10.0.14" />
   </ItemGroup>
 
 </Project>
