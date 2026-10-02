@@ -129,7 +129,8 @@ class Program
 
             _peerConnection = new RTCPeerConnection(config);
 
-            var videoTrack = new VideoTrack(new MediaStreamTrack { kind = MediaStreamTrackKind.video, id = "wow_video" });
+            // CORRECCIÓN: Inicialización nativa de pista multimedia WebRTC compatible con SIPSorcery moderno
+            var videoTrack = new MediaStreamTrack(MediaStreamTrackKind.video, false, new System.Collections.Generic.List<VideoFormat> { new VideoFormat(VideoCodecsEnum.VP8, 96) }, "wow_video");
             _peerConnection.addTrack(videoTrack);
 
             var dataChannel = await _peerConnection.createDataChannel("wow_controls");
@@ -138,7 +139,6 @@ class Program
             var offer = _peerConnection.createOffer();
             await _peerConnection.setLocalDescription(offer);
 
-            // Formateo clásico sin interpolación ni caracteres de escape problemáticos para el parser
             string base64Sdp = Convert.ToBase64String(Encoding.UTF8.GetBytes(offer.sdp));
             string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + base64Sdp + "\"}";
             byte[] offerBytes = Encoding.UTF8.GetBytes(offerJson);
@@ -160,7 +160,7 @@ class Program
         }
     }
 
-    private static async Task VideoStreamingLoop(VideoTrack track)
+    private static async Task VideoStreamingLoop(MediaStreamTrack track)
     {
         while (_isStreaming && _wowProcess != null && !_wowProcess.HasExited)
         {
@@ -177,7 +177,9 @@ class Program
                     {
                         bmp.Save(ms, ImageFormat.Bmp);
                         byte[] rawBmpBytes = ms.ToArray();
-                        track.SendVideo(1280, 720, rawBmpBytes, VideoPixelFormat.BGR24);
+                        
+                        // Envío nativo hacia la tubería asíncrona RTP sin usar tipos de datos obsoletos
+                        track.OnVideoFrame?.Invoke(1280, 720, (int)(1280 * 3), rawBmpBytes, VideoPixelFormat.BGR24);
                     }
                 }
                 await Task.Delay(33); 
@@ -217,12 +219,12 @@ class Program
         {
             byte action = data[1];
             byte keyChar = data[2];
-            uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
-            PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
-        }
-        else if (type == 1 && data.Length >= 10) 
-        {
-            byte mouseAction = data[1];
+uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
+PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
+}
+else if (type == 1 && data.Length >= 10)
+{
+byte mouseAction = data[1];
 float pctX = BitConverter.ToSingle(data, 2);
 float pctY = BitConverter.ToSingle(data, 6);
 if (GetClientRect(_wowHandle, out RECT rect))
@@ -238,27 +240,27 @@ PostMessage(_wowHandle, mouseMsg, IntPtr.Zero, lParam);
 }
 }
 private static string ExtractJsonValue(string json, string key)
-    {
-        string search = "\"" + key + "\":\"";
-        int start = json.IndexOf(search);
-        if (start == -1) return "";
-        
-        start += search.Length;
-        int end = json.IndexOf("\"", start);
-        if (end == -1) return "";
-        
-        return json.Substring(start, end - start);
-    }
-
-    private static void ResetUI() 
-    { 
-        _btnStart!.Invoke((MethodInvoker)(() => { 
-            _btnStart.Enabled = true; 
-            _btnBrowse!.Enabled = true; 
-            _txtWowPath!.Enabled = true; 
-            _txtConnectionId!.Enabled = true; 
-            _lblStatus!.Text = "Estado: Desconectado."; 
-            _lblStatus.ForeColor = Color.Gray; 
-        })); 
-    }
+{
+string search = """ + key + "":"";
+int start = json.IndexOf(search);
+if (start == -1) return "";
+start += search.Length;
+int end = json.IndexOf(""", start);
+if (end == -1) return "";
+return json.Substring(start, end - start);
 }
+private static void ResetUI()
+{
+if (_btnStart != null && _btnStart.IsHandleCreated)
+{
+_btnStart.Invoke((MethodInvoker)(() => {
+_btnStart.Enabled = true;
+_btnBrowse!.Enabled = true;
+_txtWowPath!.Enabled = true;
+_txtConnectionId!.Enabled = true;
+_lblStatus!.Text = "Estado: Desconectado.";
+_lblStatus.ForeColor = Color.Gray;
+}));
+}
+}
+}                       
