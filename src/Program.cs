@@ -114,8 +114,6 @@ class Program
             _btnStart!.Enabled = false; _btnBrowse!.Enabled = false; _txtWowPath!.Enabled = false;
             _lblStatus!.Text = "Estado: Levantando Web Cast..."; _lblStatus.ForeColor = Color.Orange;
 
-            // SOLUCIÓN CRÍTICA AUTOMÁTICA: Registra el puerto 8080 en el sistema de red interna de Windows
-            // de forma silenciosa para saltarse los bloqueos del Firewall en red privada.
             ExecuteSilentCommand("netsh http add urlacl url=http://*:8080/ user=Everyone");
             ExecuteSilentCommand("netsh advfirewall firewall add rule name=\"WoW AirCast\" dir=in action=allow protocol=TCP localport=8080");
 
@@ -164,6 +162,7 @@ class Program
 
         try
         {
+            // PROCESADOR DE ENTRADAS DEL NAVEGADOR
             if (request.Url?.AbsolutePath == "/input")
             {
                 string pctX = request.QueryString["x"] ?? "0";
@@ -184,6 +183,24 @@ class Program
                         ((action == "1") ? WM_RBUTTONDOWN : WM_RBUTTONUP);
 
                     PostMessage(_wowHandle, msg, IntPtr.Zero, lParam);
+                }
+
+                response.StatusCode = (int)HttpStatusCode.OK;
+                response.Close();
+                return;
+            }
+
+            // PROCESADOR DE TECLADO (NUEVO: Para los botones virtuales de la web)
+            if (request.Url?.AbsolutePath == "/keyboard")
+            {
+                string key = request.QueryString["key"] ?? "";
+                string action = request.QueryString["a"] ?? "0"; // 1=Down, 0=Up
+
+                if (!string.IsNullOrEmpty(key))
+                {
+                    char keyChar = key.ToUpper()[0];
+                    uint msg = (action == "1") ? WM_KEYDOWN : WM_KEYUP;
+                    PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
                 }
 
                 response.StatusCode = (int)HttpStatusCode.OK;
@@ -228,26 +245,35 @@ class Program
                                 }
                             }
                         }
-                        Thread.Sleep(45); 
-                    }
-                }
-                return;
-            }
-
-            // INTERFAZ DE USUARIO CON CONTROL DE COORDENADAS MEJORADO
-            string html = @"
-            <!DOCTYPE html>
-            <html>
-            <head>
-                <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
-                <style>
-                    body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
-#screen { width:100vw; height:100vh; object-fit:contain; display:block; }
+Thread.Sleep(45);
+}
+}
+return;
+}
+// INTERFAZ DE USUARIO WEB CON CONTROLES FLOTANTES INTEGRADOS
+string html = @"
 
 
 
 
 
+body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; font-family:sans-serif; user-select:none; }
+#screen { width:100vw; height:100vh; object-fit:contain; display:block; z-index:1; }
+.btn { position:absolute; background:rgba(30,40,50,0.6); border:1.5px solid rgba(180,200,220,0.5); color:#fff; border-radius:50%; text-align:center; font-weight:bold; z-index:10; display:flex; align-items:center; justify-content:center; active-background:rgba(75,150,205,0.6); }
+.btn:active { background:rgba(75,150,205,0.7); border-color:#fff; }
+#btnW { bottom:120px; left:75px; width:50px; height:50px; }
+#btnA { bottom:65px; left:20px; width:50px; height:50px; }
+#btnS { bottom:10px; left:75px; width:50px; height:50px; }
+#btnD { bottom:65px; left:130px; width:50px; height:50px; }
+#btnJump { bottom:30px; right:30px; width:75px; height:75px; border-radius:50%; font-size:12px; }
+
+
+
+W
+A
+S
+D
+SALTAR
 const screen = document.getElementById('screen');
 function sendInput(e, action) {
 const rect = screen.getBoundingClientRect();
@@ -260,6 +286,12 @@ fetch(/input?x=${x}&y=${y}&a=${action});
 }
 screen.addEventListener('touchstart', (e) => { e.preventDefault(); sendInput(e, 1); });
 screen.addEventListener('touchend', (e) => { e.preventDefault(); sendInput(e, 0); });
+function bindKey(id, keyStr) {
+const el = document.getElementById(id);
+el.addEventListener('touchstart', (e) => { e.preventDefault(); fetch(/keyboard?key=${encodeURIComponent(keyStr)}&a=1); });
+el.addEventListener('touchend', (e) => { e.preventDefault(); fetch(/keyboard?key=${encodeURIComponent(keyStr)}&a=0); });
+}
+bindKey('btnW', 'W'); bindKey('btnA', 'A'); bindKey('btnS', 'S'); bindKey('btnD', 'D'); bindKey('btnJump', ' ');
 
 
 ";
@@ -279,14 +311,20 @@ ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
 {
 CreateNoWindow = true,
 UseShellExecute = false,
-Verb = "runas" // Fuerza la ejecución heredando permisos correctos
+Verb = "runas"
 };
 Process.Start(psi);
 }
 catch { }
 }
 private static void ResetUI() { _btnStart!.Invoke((MethodInvoker)(() => { _btnStart.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; })); }
-private static ImageCodecInfo? GetEncoder(ImageFormat format) { foreach (ImageCodecInfo codec in Icons = ImageCodecInfo.GetImageEncoders()) { if (codec.FormatID == format.Guid) return codec; } return null; }
-// Corrección sintáctica menor para la iteración de códecs
-private static ImageCodecInfo? GetEncoderFix(ImageFormat format) { foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders()) { if (codec.FormatID == format.Guid) return codec; } return null; }
+// CORREGIDO: Se eliminó el error sintáctico 'Icons =' limpiando el método por completo
+private static ImageCodecInfo? GetEncoder(ImageFormat format)
+{
+foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders())
+{
+if (codec.FormatID == format.Guid) return codec;
+}
+return null;
+}
 }
