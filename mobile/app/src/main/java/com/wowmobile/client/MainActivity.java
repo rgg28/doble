@@ -35,11 +35,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     private volatile boolean isRunning = false;
 
-    private static final String PC_IP = "192.168.1.50";
+    // TODO: RECUERDA CAMBIAR ESTA IP POR LA QUE TE DÉ EL COMANDO "ipconfig" EN TU PC
+    private static final String PC_IP = "192.168.1.50"; 
     private static final int PC_PORT = 8888;
 
     private DPadView dPadView;
-    private JumpButtonView jumpButtonView; // Nuevo botón de salto
+    private JumpButtonView jumpButtonView;
+    private MapButtonView mapButtonView; // Nuevo botón de mapa
 
     // Colores UI originales heredados
     public static final int UI_BG_DARK = Color.argb(155, 5, 8, 13);
@@ -89,18 +91,29 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         dPadParams.bottomMargin = dp(22);
         mainContainer.addView(dPadView, dPadParams);
 
-        // 3. Control Derecho: Botón flotante para Saltar (Espacio)
+        // 3. Control Derecho Inferior: Botón flotante para Saltar (Espacio)
         jumpButtonView = new JumpButtonView(this);
         FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(
-                dp(75), // Tamaño compacto y accesible
+                dp(75),
                 dp(75),
                 Gravity.BOTTOM | Gravity.RIGHT
         );
-        jumpParams.rightMargin = dp(35);   // Posicionado cómodamente para el pulgar derecho
+        jumpParams.rightMargin = dp(35);   
         jumpParams.bottomMargin = dp(35);
         mainContainer.addView(jumpButtonView, jumpParams);
 
-        // 4. Hilo de Streaming
+        // 4. Control Derecho Superior: Botón flotante para el Mapa (Tecla M)
+        mapButtonView = new MapButtonView(this);
+        FrameLayout.LayoutParams mapParams = new FrameLayout.LayoutParams(
+                dp(60), // Ligeramente más pequeño para mantener jerarquía visual
+                dp(60),
+                Gravity.BOTTOM | Gravity.RIGHT
+        );
+        mapParams.rightMargin = dp(42);   // Alineado verticalmente con el de saltar
+        mapParams.bottomMargin = dp(125); // Posicionado justo arriba del de saltar
+        mainContainer.addView(mapButtonView, mapParams);
+
+        // 5. Hilo de Streaming
         isRunning = true;
         new Thread(this::connectAndStream, "WoW-Stream").start();
     }
@@ -246,25 +259,76 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     @Override protected void onDestroy() { isRunning = false; closeConnection(); super.onDestroy(); }
 
     // ============================================================
-    // VISTA DEL BOTÓN DE SALTO (NUEVA INTERFAZ)
+    // VISTA DEL BOTÓN DE MAPA (NUEVA INTERFAZ)
     // ============================================================
 
-    private static class JumpButtonView extends View {
-        private final MainActivity act;
-        private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private boolean isPressed = false;
-
-        JumpButtonView(Context context) {
-            super(context);
-            act = (MainActivity) context;
-            setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-
-            pBase.setStyle(Paint.Style.FILL);
-            pBorder.setStyle(Paint.Style.STROKE);
-            pBorder.setStrokeWidth(act.dpf(1.3f));
-
+    private static class MapButtonView extends View {
+private final MainActivity act;
+private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
+private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
+private boolean isPressed = false;
+MapButtonView(Context context) {
+super(context);
+act = (MainActivity) context;
+setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+pBase.setStyle(Paint.Style.FILL);
+pBorder.setStyle(Paint.Style.STROKE);
+pBorder.setStrokeWidth(act.dpf(1.1f));
+pText.setTextAlign(Paint.Align.CENTER);
+pText.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
+pText.setTextSize(act.dpf(11f));
+}
+@Override
+protected void onDraw(Canvas canvas) {
+super.onDraw(canvas);
+float cx = getWidth() / 2f;
+float cy = getHeight() / 2f;
+float radius = Math.min(getWidth(), getHeight()) * 0.44f;
+pBase.setColor(isPressed ? UI_ACTIVE : UI_BG_DARK);
+pBorder.setColor(isPressed ? UI_ACTIVE_BRIGHT : UI_BORDER);
+pText.setColor(isPressed ? Color.WHITE : UI_TEXT);
+canvas.drawCircle(cx, cy, radius, pBase);
+canvas.drawCircle(cx, cy, radius, pBorder);
+Paint.FontMetrics metrics = pText.getFontMetrics();
+float textY = cy - (metrics.ascent + metrics.descent) / 2f;
+canvas.drawText("MAPA", cx, textY, pText);
+}
+@Override
+public boolean onTouchEvent(MotionEvent event) {
+int action = event.getActionMasked();
+switch (action) {
+case MotionEvent.ACTION_DOWN:
+isPressed = true;
+act.sendStroke("M", true); // Envía la tecla 'M'
+invalidate();
+return true;
+case MotionEvent.ACTION_UP:
+case MotionEvent.ACTION_CANCEL:
+isPressed = false;
+act.sendStroke("M", false);
+invalidate();
+return true;
+}
+return super.onTouchEvent(event);
+}
+}
+// ============================================================
+// VISTA DEL BOTÓN DE SALTO
+// ============================================================
+private static class JumpButtonView extends View {
+private final MainActivity act;
+private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
+private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
+private boolean isPressed = false;
+JumpButtonView(Context context) {
+super(context);
+act = (MainActivity) context;
+setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+pBase.setStyle(Paint.Style.FILL);
+pBorder.setStyle(Paint.Style.STROKE);
+pBorder.setStrokeWidth(act.dpf(1.3f));
 pText.setTextAlign(Paint.Align.CENTER);
 pText.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
 pText.setTextSize(act.dpf(12f));
@@ -290,7 +354,7 @@ int action = event.getActionMasked();
 switch (action) {
 case MotionEvent.ACTION_DOWN:
 isPressed = true;
-act.sendStroke(" ", true); // Envía espacio (ASCII 32)
+act.sendStroke(" ", true);
 invalidate();
 return true;
 case MotionEvent.ACTION_UP:
