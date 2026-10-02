@@ -1,0 +1,104 @@
+name: Compilar Servidor PC y App Android
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  # ============================================================
+  # COMPILACIÓN DEL SERVIDOR PC (C# / .NET 8)
+  # ============================================================
+  compilar-pc:
+    name: Compilar Servidor PC
+    runs-on: windows-latest
+
+    steps:
+    - name: Descargar código fuente
+      uses: actions/checkout@v4
+
+    - name: Configurar entorno .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restaurar dependencias de NuGet
+      run: dotnet restore WoWStreamServer.sln
+
+    - name: Compilar servidor en modo Release
+      run: dotnet build WoWStreamServer.sln --configuration Release --no-restore
+
+    - name: Subir ejecutable compilado (Artifact)
+      uses: actions/upload-artifact@v4
+      with:
+        name: Servidor-PC-WowStream
+        path: src/bin/Release/net8.0-windows*/
+
+  # ============================================================
+  # COMPILACIÓN Y FIRMADO DE LA APP ANDROID (RELEASE)
+  # ============================================================
+  compilar-android:
+    name: Compilar y Firmar App Android
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Descargar código fuente
+      uses: actions/checkout@v4
+
+    - name: Configurar Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+        cache: 'gradle'
+
+    # CORRECCIÓN: Se ajusta el directorio de trabajo a la carpeta 'mobile'
+    - name: Otorgar permisos de ejecución a Gradle
+      run: chmod +x gradlew
+      working-directory: ./mobile
+
+    # CORRECCIÓN: Compila apuntando a la estructura interna de 'mobile'
+    - name: Compilar APK en modo Release (Sin firmar)
+      run: ./gradlew assembleRelease
+      working-directory: ./mobile
+
+    # Genera el almacén de llaves dentro de la carpeta del proyecto Android
+    - name: Autogenerar Keystore de firma sobre la marcha
+      run: |
+        keytool -genkeypair \
+          -v \
+          -keystore mobile/release.keystore \
+          -alias wowalias \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass temporalwow123 \
+          -keypass temporalwow123 \
+          -dname "CN=WowMobile, OU=Desarrollo, O=WowClient, L=Local, S=Local, C=ES"
+
+    # Busca y firma el archivo APK generado dentro del subdirectorio 'mobile'
+    - name: Firmar APK con apksigner de Android
+      run: |
+        BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
+        echo "Usando build-tools desde: $BUILD_TOOLS_DIR"
+        
+        UNSIGNED_APK=$(find mobile/app/build/outputs/apk/release/ -name "*-unsigned.apk" -o -name "*-release.apk" | head -n 1)
+        echo "APK origen encontrado: $UNSIGNED_APK"
+        
+        $BUILD_TOOLS_DIR/apksigner sign \
+          --ks mobile/release.keystore \
+          --ks-key-alias wowalias \
+          --ks-pass pass:temporalwow123 \
+          --key-pass pass:temporalwow123 \
+          --out mobile/app/build/outputs/apk/release/WowMobile-Release-Firmado.apk \
+          $UNSIGNED_APK
+          
+        echo "[OK] ¡APK firmado con éxito!"
+
+    - name: Subir APK final firmado (Artifact)
+      uses: actions/upload-artifact@v4
+      with:
+        name: App-Android-WowStream-Firmado
+        path: mobile/app/build/outputs/apk/release/WowMobile-Release-Firmado.apk
