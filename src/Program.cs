@@ -9,7 +9,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using SIPSorcery.Net; // Infraestructura WebRTC profesional
+using SIPSorcery.Net; 
 using SIPSorceryMedia.Abstractions;
 
 class Program
@@ -17,12 +17,11 @@ class Program
     private static IntPtr _wowHandle = IntPtr.Zero;
     private static Process? _wowProcess;
     
-    // Conectores WebRTC de ultra-baja latencia
     private static RTCPeerConnection? _peerConnection;
     private static ClientWebSocket? _signalingWebSocket;
     private static bool _isStreaming = false;
 
-    // Componentes visuales del panel gráfico
+    // Componentes de la UI limpia
     private static Form? _mainForm;
     private static TextBox? _txtWowPath;
     private static TextBox? _txtConnectionId; 
@@ -64,7 +63,7 @@ class Program
         _btnBrowse = new Button { Text = "Buscar...", Left = 390, Top = 36, Width = 90, Height = 25, BackColor = Color.FromArgb(60, 65, 75), ForeColor = Color.White, FlatStyle = FlatStyle.Flat };
         _btnBrowse.Click += BtnBrowse_Click;
 
-        Label lblId = new Label { Text = "ID de Conexión (Crea una sala privada para conectar sin IPs):", Left = 20, Top = 75, Width = 400, ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
+        Label lblId = new Label { Text = "ID de Conexión Global (Crea un código para conectar desde fuera):", Left = 20, Top = 75, Width = 450, ForeColor = Color.White, Font = new Font("Segoe UI", 9, FontStyle.Bold) };
         _txtConnectionId = new TextBox { Left = 20, Top = 98, Width = 200, Text = "WowSala777", BackColor = Color.FromArgb(40, 44, 52), ForeColor = Color.Cyan, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
 
         _btnStart = new Button { Text = "INICIAR OBS-CAST", Left = 20, Top = 135, Width = 200, Height = 35, BackColor = Color.FromArgb(75, 100, 205), ForeColor = Color.White, FlatStyle = FlatStyle.Flat, Font = new Font("Segoe UI", 10, FontStyle.Bold) };
@@ -94,7 +93,7 @@ class Program
         if (!File.Exists(wowPath) || string.IsNullOrEmpty(connectionId)) return;
 
         _btnStart!.Enabled = false; _btnBrowse!.Enabled = false; _txtWowPath!.Enabled = false; _txtConnectionId!.Enabled = false;
-        _lblStatus!.Text = "Inicializando WebRTC global..."; _lblStatus.ForeColor = Color.Orange;
+        _lblStatus!.Text = "Abriendo WoW y enlazando nube..."; _lblStatus.ForeColor = Color.Orange;
 
         try
         {
@@ -113,20 +112,15 @@ class Program
         catch (Exception ex) { MessageBox.Show(ex.Message); ResetUI(); }
     }
 
-    // ============================================================
-    // APERTURA DE TÚNEL WEBRTC (TRANSMISIÓN PARA ZONAS EXTERNAS)
-    // ============================================================
     private static async Task SetupWebRtcConnection(string roomId)
     {
         try
         {
-            // Servidor de señalización global público
             string signalingUrl = "wss://://piesocket.com";
             
             _signalingWebSocket = new ClientWebSocket();
             await _signalingWebSocket.ConnectAsync(new Uri(signalingUrl), CancellationToken.None);
 
-            // Servidores STUN globales de Google para saltarse Firewalls y routers corporativos de raíz
             var config = new RTCConfiguration {
                 iceServers = new System.Collections.Generic.List<RTCIceServer> {
                     new RTCIceServer { urls = "stun:://google.com" }
@@ -135,25 +129,21 @@ class Program
 
             _peerConnection = new RTCPeerConnection(config);
 
-            // Inyectar pista de video codificada RTP/UDP (Baja Latencia OBS)
             var videoTrack = new VideoTrack(new MediaStreamTrack { kind = MediaStreamTrackKind.video, id = "wow_video" });
             _peerConnection.addTrack(videoTrack);
 
-            // Canal de datos dedicado para recolectar toques e inputs remotos de redes móviles
             var dataChannel = await _peerConnection.createDataChannel("wow_controls");
             dataChannel.onmessage += (hc, type, data) => HandleIncomingWebRtcControls(data);
 
-            // Generar oferta SDP de enlazamiento
             var offer = _peerConnection.createOffer();
             await _peerConnection.setLocalDescription(offer);
 
-            // Enmascaramiento plano JSON seguro para evitar errores CS8997
-            string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + offer.sdp + "\"}";
+            string offerJson = "{\"room\":\"" + roomId + "\", \"type\":\"offer\", \"sdp\":\"" + Convert.ToBase64String(Encoding.UTF8.GetBytes(offer.sdp)) + "\"}";
             byte[] offerBytes = Encoding.UTF8.GetBytes(offerJson);
             await _signalingWebSocket.SendAsync(new ArraySegment<byte>(offerBytes), WebSocketMessageType.Text, true, CancellationToken.None);
 
             _mainForm?.Invoke((MethodInvoker)delegate {
-                _lblStatus!.Text = "¡Emitiendo! Abre la app e ingresa el ID.";
+                _lblStatus!.Text = "¡Emitiendo! Coloca el ID en tu app móvil.";
                 _lblStatus.ForeColor = Color.LightGreen;
             });
 
@@ -163,14 +153,11 @@ class Program
         }
         catch (Exception ex)
         {
-            MessageBox.Show("Fallo de negociación WebRTC: " + ex.Message);
+            MessageBox.Show("Fallo en WebRTC: " + ex.Message);
             _mainForm?.Invoke((MethodInvoker)delegate { ResetUI(); });
         }
     }
 
-    // ============================================================
-    // TRANSMISOR EN TIEMPO REAL A FLUJO DE VIDEO (RTP PIPELINE)
-    // ============================================================
     private static async Task VideoStreamingLoop(VideoTrack track)
     {
         while (_isStreaming && _wowProcess != null && !_wowProcess.HasExited)
@@ -188,8 +175,6 @@ class Program
                     {
                         bmp.Save(ms, ImageFormat.Bmp);
                         byte[] rawBmpBytes = ms.ToArray();
-                        
-                        // Sube los bloques crudos BGR24 directo al túnel de frames de SIPSorcery
                         track.SendVideo(1280, 720, rawBmpBytes, VideoPixelFormat.BGR24);
                     }
                 }
@@ -199,48 +184,46 @@ class Program
         }
     }
 
-    // ============================================================
-    // ESCUCHA DE LA RESPUESTA ADDR DESDE LA RED MÓVIL EXTIERIOR
-    // ============================================================
     private static async Task ListenForSignalingMessages()
     {
-        // CORRECCIÓN CS1003: Inicialización explícita del búfer con tamaño fijo seguro (2048 bytes)
-        byte[] buffer = new byte[2048];
+        byte[] buffer = new byte[4096];
         while (_signalingWebSocket?.State == WebSocketState.Open)
         {
             try
             {
-var result = await _signalingWebSocket.ReceiveAsync(new ArraySegment(buffer), CancellationToken.None);
-if (result.MessageType == WebSocketMessageType.Close) break;
-string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
-if (message.Contains(""type":"answer""))
-{
-string sdp = ExtractJsonValue(message, "sdp");
-_peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionType.answer, sdp = sdp });
-}
-}
-catch { break; }
-}
-}
-// ============================================================
-// INYECTOR DE CONTROLES MEDIANTE CANAL DE DATOS WEBRTC
-// ============================================================
-private static void HandleIncomingWebRtcControls(byte[] data)
-{
-if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
-byte type = data[0];
-if (type == 0)
-{
-byte action = data[1];
-byte keyChar = data[2];
-uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
-PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
-}
-else if (type == 1 && data.Length >= 10)
-{
-byte mouseAction = data[1];
-float pctX = BitConverter.ToSingle(data, 2);
-float pctY = BitConverter.ToSingle(data, 6);
+                var result = await _signalingWebSocket.ReceiveAsync(new ArraySegment<byte>(buffer), CancellationToken.None);
+                if (result.MessageType == WebSocketMessageType.Close) break;
+
+                string message = Encoding.UTF8.GetString(buffer, 0, result.Count);
+                if (message.Contains("\"type\":\"answer\""))
+                {
+                    string base64Sdp = ExtractJsonValue(message, "sdp");
+                    string sdp = Encoding.UTF8.GetString(Convert.FromBase64String(base64Sdp));
+                    _peerConnection?.setRemoteDescription(new RTCSessionDescription { type = RTCSessionDescriptionType.answer, sdp = sdp });
+                }
+            }
+            catch { break; }
+        }
+    }
+
+    private static void HandleIncomingWebRtcControls(byte[] data)
+    {
+        if (data.Length < 3 || _wowHandle == IntPtr.Zero) return;
+
+        byte type = data[0];
+        if (type == 0) 
+        {
+            byte action = data[1];
+            byte keyChar = data[2];
+            uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
+            PostMessage(_wowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
+        }
+        else if (type == 1 && data.Length >= 10) 
+        {
+            byte mouseAction = data[1];
+            float pctX = BitConverter.ToSingle(data, 2);
+            float pctY = BitConverter.ToSingle(data, 6);
+
 if (GetClientRect(_wowHandle, out RECT rect))
 {
 int width = rect.Right - rect.Left;
@@ -263,5 +246,5 @@ int end = json.IndexOf(""", start);
 if (end == -1) return "";
 return json.Substring(start, end - start);
 }
-private static void ResetUI() { _btnStart!.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; _txtConnectionId!.Enabled = true; _lblStatus!.Text = "Estado: Desconectado."; _lblStatus.ForeColor = Color.Gray; }
+private static void ResetUI() { _btnStart!.Invoke((MethodInvoker)(() => { _btnStart.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; _txtConnectionId!.Enabled = true; _lblStatus!.Text = "Estado: Desconectado."; _lblStatus.ForeColor = Color.Gray; })); }
 }
