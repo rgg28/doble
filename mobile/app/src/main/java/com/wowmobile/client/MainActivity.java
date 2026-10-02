@@ -416,16 +416,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     // DP
     // ============================================================
 
-    public int dp(int value) {
-
-        return (int) (
-                value *
-                getResources()
-                        .getDisplayMetrics()
-                        .density
-                + 0.5f
-        );
-    }
+    public int dp(float value) {
+    return (int) (
+            value *
+            getResources()
+                    .getDisplayMetrics()
+                    .density
+            + 0.5f
+    );
+}
 
     // ============================================================
     // SURFACE
