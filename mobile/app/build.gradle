@@ -12,20 +12,10 @@ android {
         versionName "1.0"
     }
 
-    // CONFIGURACIÓN DE LA FIRMA GENERADA EN EL PIPELINE
-    signingConfigs {
-        release {
-            storeFile file("release-auto-key.jks")
-            storePassword "mi_contrasenia_secreta"
-            keyAlias "my-auto-alias"
-            keyPassword "mi_contrasenia_secreta"
-        }
-    }
-
     buildTypes {
         release {
             minifyEnabled false
-            signingConfig signingConfigs.release // Aplica la firma automática
+            // Se eliminó la línea de signingConfig para que compile un APK limpio sin firmar
         }
     }
     
