@@ -54,13 +54,12 @@ class Program
     // ARRANQUE DE LA APLICACIÓN
     // ============================================================
 
-    [STAThread] // Requerido por Windows para poder abrir el buscador de archivos
+    [STAThread] 
     static void Main(string[] args)
     {
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        // Crear la ventana principal de forma manual
         _mainForm = new Form
         {
             Text = "WoW Dual Stream Server",
@@ -131,7 +130,6 @@ class Program
             Font = new Font("Segoe UI", 9, FontStyle.Italic)
         };
 
-        // Agregar los controles a la ventana
         _mainForm.Controls.Add(lblPath);
         _mainForm.Controls.Add(_txtWowPath);
         _mainForm.Controls.Add(_btnBrowse);
@@ -187,7 +185,6 @@ class Program
             
             if (_wowProcess != null)
             {
-                // Ejecutar la lógica de red en hilos secundarios para no congelar la ventana gráfica
                 Thread serverThread = new Thread(() => RunServerLogic(_wowProcess)) { IsBackground = true };
                 serverThread.Start();
             }
@@ -212,14 +209,12 @@ class Program
             wowProcess.ProcessorAffinity = (IntPtr)0x30;
             _wowHandle = wowProcess.MainWindowHandle;
 
-            // Iniciar el faro de autodescubrimiento UDP
             Thread udpThread = new Thread(StartUdpBeacon) { IsBackground = true };
             udpThread.Start();
 
             _streamServer = new TcpListener(IPAddress.Any, 8888);
             _streamServer.Start();
 
-            // Actualizar el estado de la UI de forma segura desde otro hilo
             _mainForm?.Invoke((MethodInvoker)delegate {
                 _lblStatus!.Text = "Estado: ¡En línea! Esperando móvil...";
                 _lblStatus.ForeColor = Color.LightGreen;
@@ -238,10 +233,10 @@ class Program
                 ThreadPool.QueueUserWorkItem(state => HandleIncomingControls(client, _wowHandle));
             }
         }
-        catch (Exception ex)
+        catch 
         {
             _mainForm?.Invoke((MethodInvoker)delegate {
-                _lblStatus!.Text = "Estado: Error en la red.";
+                _lblStatus!.Text = "Estado: Error en la red o juego cerrado.";
                 _lblStatus.ForeColor = Color.Red;
             });
         }
@@ -286,9 +281,11 @@ class Program
                     }
 
                     using (MemoryStream ms = new MemoryStream())
-{
-EncoderParameters encoderParams = new EncoderParameters(1);
-encoderParams.Param = new EncoderParameter[] { new EncoderParameter(Encoder.Quality, 60L) };
+                    {
+                        // CORRECCIÓN CS0104 y CS1503: Nombre calificado completo y casteo correcto del parámetro de calidad para JpegEncoder
+                        EncoderParameters encoderParams = new EncoderParameters(1);
+                        encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 60L); 
+                        
 ImageCodecInfo? jpegCodec = GetEncoder(ImageFormat.Jpeg);
 if (jpegCodec != null)
 {
