@@ -294,8 +294,7 @@ class Program
 
                     using (MemoryStream ms = new MemoryStream())
                     {
-                        // CORRECCIÓN CS0029: Asignación explícita envolviendo el parámetro en un arreglo válido
-EncoderParameters encoderParams = new EncoderParameters(1);
+                        EncoderParameters encoderParams = new EncoderParameters(1);
 encoderParams.Param = new EncoderParameter[] { new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 60L) };
 ImageCodecInfo? jpegCodec = GetEncoder(ImageFormat.Jpeg);
 if (jpegCodec != null)
@@ -328,20 +327,22 @@ if (typeByte == -1) break;
 byte commandType = (byte)typeByte;
 if (commandType == 0)
 {
-byte[] kbBuffer = new byte;
+// CORRECCIÓN CS1526: Inicialización explícita del búfer con tamaño fijo para teclado (2 bytes)
+byte[] kbBuffer = new byte[2];
 int read = ReadExactly(stream, kbBuffer, 2);
 if (read != 2) break;
-byte action = kbBuffer;
-byte keyChar = kbBuffer;
+byte action = kbBuffer[0];
+byte keyChar = kbBuffer[1];
 uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
 PostMessage(wowWindowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
 }
 else if (commandType == 1)
 {
-byte[] mouseBuffer = new byte;
+// CORRECCIÓN CS1526: Inicialización explícita del búfer con tamaño fijo para ratón (9 bytes)
+byte[] mouseBuffer = new byte[9];
 int read = ReadExactly(stream, mouseBuffer, 9);
 if (read != 9) break;
-byte mouseAction = mouseBuffer;
+byte mouseAction = mouseBuffer[0];
 float pctX = BitConverter.ToSingle(mouseBuffer, 1);
 float pctY = BitConverter.ToSingle(mouseBuffer, 5);
 if (GetClientRect(wowWindowHandle, out RECT rect))
