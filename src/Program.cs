@@ -1,13 +1,10 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
-using System.Net;
-using System.Net.Sockets;
-using System.Text;
 
 class Program
 {
-    private static TcpListener? _streamServer;
+    private static System.Net.Sockets.TcpListener? _streamServer;
     private static bool _isDiscoverable = true;
 
     // ============================================================
@@ -31,10 +28,11 @@ class Program
 
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;
-    private const uint WM_LBUTTONDOWN = 0x0201; 
-    private const uint WM_LBUTTONUP   = 0x0202; 
-    private const uint WM_RBUTTONDOWN = 0x0204; 
-    private const uint WM_RBUTTONUP   = 0x0205; 
+    
+    private const uint WM_LBUTTONDOWN = 0x0201; // Clic Izquierdo presionado (Interfaz/Barras)
+    private const uint WM_LBUTTONUP   = 0x0202; // Clic Izquierdo soltado
+    private const uint WM_RBUTTONDOWN = 0x0204; // Clic Derecho presionado (Mundo/Interacciones)
+    private const uint WM_RBUTTONUP   = 0x0205; // Clic Derecho soltado
 
     // ============================================================
     // MÉTODO PRINCIPAL
@@ -49,8 +47,9 @@ class Program
 
         try
         {
-            ProcessStartInfo startInfo = new ProcessStartInfo { FileName = wowPath, Arguments = "-windowed" };
-            Process? wowProcess = Process.Start(startInfo);
+            // CORRECCIÓN DEFINITIVA: Nombre calificado completo para evitar el error CS0246
+            System.Diagnostics.ProcessStartInfo startInfo = new System.Diagnostics.ProcessStartInfo { FileName = wowPath, Arguments = "-windowed" };
+            System.Diagnostics.Process? wowProcess = System.Diagnostics.Process.Start(startInfo);
             
             if (wowProcess != null)
             {
@@ -64,17 +63,18 @@ class Program
                 Thread udpThread = new Thread(StartUdpBeacon) { IsBackground = true };
                 udpThread.Start();
 
-                _streamServer = new TcpListener(IPAddress.Any, 8888);
+                _streamServer = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 8888);
                 _streamServer.Start();
                 Console.WriteLine("[OK] Servidor listo. ¡Abre la app en tu móvil para conectar automáticamente!");
 
                 while (true)
                 {
-                    TcpClient client = _streamServer.AcceptTcpClient();
+                    System.Net.Sockets.TcpClient client = _streamServer.AcceptTcpClient();
                     Console.WriteLine("[INFO] Celular conectado para recibir stream e inputs.");
                     
-                    ThreadPool.QueueUserWorkItem(state => ProcessAndStreamVideo(client, wowProcess));
-                    ThreadPool.QueueUserWorkItem(state => HandleIncomingControls(client, wowHandle));
+                    // CORRECCIÓN DEFINITIVA: Se pasa el tipo calificado completo al ThreadPool
+                    System.Threading.ThreadPool.QueueUserWorkItem(state => ProcessAndStreamVideo(client, wowProcess));
+                    System.Threading.ThreadPool.QueueUserWorkItem(state => HandleIncomingControls(client, wowHandle));
                 }
             }
         }
@@ -90,10 +90,10 @@ class Program
     // ============================================================
     private static void StartUdpBeacon()
     {
-        using UdpClient udpClient = new UdpClient();
+        using System.Net.Sockets.UdpClient udpClient = new System.Net.Sockets.UdpClient();
         udpClient.EnableBroadcast = true;
-        IPEndPoint endPoint = new IPEndPoint(IPAddress.Broadcast, 8889);
-        byte[] responseData = Encoding.UTF8.GetBytes("WOW_SERVER_HERE");
+        System.Net.IPEndPoint endPoint = new System.Net.IPEndPoint(System.Net.IPAddress.Broadcast, 8889);
+        byte[] responseData = System.Text.Encoding.UTF8.GetBytes("WOW_SERVER_HERE");
 
         while (_isDiscoverable)
         {
@@ -110,9 +110,10 @@ class Program
     // CAPTURA Y STREAMING DE VIDEO
     // ============================================================
 
-    private static void ProcessAndStreamVideo(TcpClient client, Process process)
+    // CORRECCIÓN DEFINITIVA: Se ajustó el parámetro a System.Diagnostics.Process
+    private static void ProcessAndStreamVideo(System.Net.Sockets.TcpClient client, System.Diagnostics.Process process)
     {
-        using NetworkStream stream = client.GetStream();
+        using System.Net.Sockets.NetworkStream stream = client.GetStream();
         while (client.Connected && !process.HasExited)
         {
             try
@@ -149,12 +150,12 @@ class Program
     }
 
     // ============================================================
-    // GESTIÓN DE CONTROLES ENTRANTES
+    // GESTIÓN DE CONTROLES ENTRANTES (PROCESADOR HÍBRIDO)
     // ============================================================
 
-    private static void HandleIncomingControls(TcpClient client, IntPtr wowWindowHandle)
+    private static void HandleIncomingControls(System.Net.Sockets.TcpClient client, IntPtr wowWindowHandle)
     {
-        using NetworkStream stream = client.GetStream();
+        using System.Net.Sockets.NetworkStream stream = client.GetStream();
 
         while (client.Connected && wowWindowHandle != IntPtr.Zero)
         {
@@ -167,6 +168,9 @@ class Program
 
                 if (commandType == 0)
                 {
+                    // ----------------------------------------------------
+                    // COMANDO DE TECLADO (Movimiento / Saltar) -> 2 bytes restantes
+                    // ----------------------------------------------------
                     byte[] kbBuffer = new byte[2];
                     int read = ReadExactly(stream, kbBuffer, 2);
                     if (read != 2) break;
@@ -179,6 +183,9 @@ class Program
                 }
                 else if (commandType == 1)
                 {
+                    // ----------------------------------------------------
+                    // COMANDO DE RATÓN INTELIGENTE (Point & Click) -> 9 bytes restantes
+                    // ----------------------------------------------------
                     byte[] mouseBuffer = new byte[9];
                     int read = ReadExactly(stream, mouseBuffer, 9);
                     if (read != 9) break;
@@ -199,6 +206,9 @@ class Program
                         IntPtr lParam = (IntPtr)((localY << 16) | (localX & 0xFFFF));
                         uint mouseMsg;
 
+                        // EVALUACIÓN DE ZONA: 
+                        // Si pisa abajo del 70% de la pantalla (pctY > 0.70f), es interfaz -> Clic Izquierdo.
+                        // Si pisa arriba, es el mundo 3D -> Clic Derecho.
                         if (pctY > 0.70f)
                         {
                             mouseMsg = (mouseAction == 1) ? WM_LBUTTONDOWN : WM_LBUTTONUP;
@@ -216,22 +226,25 @@ class Program
         }
     }
 
-    private static int ReadExactly(NetworkStream stream, byte[] buffer, int count)
+    // ============================================================
+    // UTILIDADES DE RED Y CÓDECS
+    // ============================================================
+
+    private static int ReadExactly(System.Net.Sockets.NetworkStream stream, byte[] buffer, int count)
     {
         int totalRead = 0;
         while (totalRead < count)
         {
             int read = stream.Read(buffer, totalRead, count - totalRead);
-            if (read == 0) return totalRead; 
-            totalRead += read;
-        }
-        return totalRead;
-    }
-
-    private static ImageCodecInfo? GetEncoder(ImageFormat format)
-    {
-        ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
-        foreach (ImageCodecInfo codec in codecs) { if (codec.FormatID == format.Guid) return codec; }
-        return null;
-    }
+if (read == 0) return totalRead;
+totalRead += read;
+}
+return totalRead;
+}
+private static ImageCodecInfo? GetEncoder(ImageFormat format)
+{
+ImageCodecInfo[] codecs = ImageCodecInfo.GetImageEncoders();
+foreach (ImageCodecInfo codec in codecs) { if (codec.FormatID == format.Guid) return codec; }
+return null;
+}
 }
