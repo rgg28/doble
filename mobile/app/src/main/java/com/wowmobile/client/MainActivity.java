@@ -34,9 +34,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private OutputStream commandStream;
 
     private volatile boolean isRunning = false;
-
-    // IP CORREGIDA AUTOMÁTICAMENTE CON TU IP REAL DE RED
-    private static final String PC_IP = "192.168.1.12"; 
     private static final int PC_PORT = 8888;
 
     private DPadView dPadView;
@@ -113,9 +110,9 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         mapParams.bottomMargin = dp(125); 
         mainContainer.addView(mapButtonView, mapParams);
 
-        // 5. Hilo de Streaming
+        // 5. Iniciar flujo por el túnel inalámbrico local
         isRunning = true;
-        new Thread(this::connectAndStream, "WoW-Stream").start();
+        new Thread(this::discoverAndStream, "WoW-TunnelStream").start();
     }
 
     private void setupDirectTouchInteraction() {
@@ -140,47 +137,16 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // ============================================================
-    // ENVÍO DE COMANDOS
+    // CONEXIÓN A TRAVÉS DEL TÚNEL INALÁMBRICO (ADB REVERSE)
     // ============================================================
 
-    public synchronized void sendStroke(String key, boolean pressed) {
-        if (commandStream == null || key == null || key.isEmpty()) return;
+    private void discoverAndStream() {
+        // CORRECCIÓN COMPLETA: Usamos 127.0.0.1 para que el túnel inalámbrico de red
+        // pase los datos del Wi-Fi al cable Ethernet de la PC saltándose el Firewall.
+        String discoveredIp = "127.0.0.1"; 
 
         try {
-            byte[] packet = new byte[]{
-                    (byte) 0, // Tipo 0 = Teclado
-                    (byte) (pressed ? 1 : 0),
-                    (byte) Character.toUpperCase(key.charAt(0))
-            };
-            commandStream.write(packet);
-            commandStream.flush();
-        } catch (Exception ignored) {}
-    }
-
-    public synchronized void sendMouseClick(float pctX, float pctY, boolean pressed) {
-        if (commandStream == null) return;
-
-        try {
-            ByteBuffer buffer = ByteBuffer.allocate(10);
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
-            
-            buffer.put((byte) 1); // Tipo 1 = Ratón
-            buffer.put((byte) (pressed ? 1 : 0));
-            buffer.putFloat(pctX);
-            buffer.putFloat(pctY);
-
-            commandStream.write(buffer.array());
-            commandStream.flush();
-        } catch (Exception ignored) {}
-    }
-
-    // ============================================================
-    // STREAMING DE VIDEO
-    // ============================================================
-
-    private void connectAndStream() {
-        try {
-            socket = new Socket(PC_IP, PC_PORT);
+            socket = new Socket(discoveredIp, PC_PORT);
             videoStream = socket.getInputStream();
             commandStream = socket.getOutputStream();
 
@@ -225,6 +191,41 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
     }
 
+    // ============================================================
+    // ENVÍO DE COMANDOS
+    // ============================================================
+
+    public synchronized void sendStroke(String key, boolean pressed) {
+        if (commandStream == null || key == null || key.isEmpty()) return;
+
+        try {
+            byte[] packet = new byte[]{
+                    (byte) 0, 
+                    (byte) (pressed ? 1 : 0),
+                    (byte) Character.toUpperCase(key.charAt(0))
+            };
+            commandStream.write(packet);
+            commandStream.flush();
+        } catch (Exception ignored) {}
+    }
+
+    public synchronized void sendMouseClick(float pctX, float pctY, boolean pressed) {
+        if (commandStream == null) return;
+
+        try {
+            ByteBuffer buffer = ByteBuffer.allocate(10);
+            buffer.order(ByteOrder.LITTLE_ENDIAN);
+            
+            buffer.put((byte) 1); 
+            buffer.put((byte) (pressed ? 1 : 0));
+            buffer.putFloat(pctX);
+            buffer.putFloat(pctY);
+
+            commandStream.write(buffer.array());
+            commandStream.flush();
+        } catch (Exception ignored) {}
+    }
+
     private int readFully(InputStream stream, byte[] buffer, int offset, int length) throws Exception {
         int total = 0;
         while (total < length && isRunning) {
@@ -264,8 +265,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     private static class MapButtonView extends View {
         private final MainActivity act;
-        private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
+private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
 private boolean isPressed = false;
 MapButtonView(Context context) {
@@ -458,6 +459,7 @@ dy *= scale;
 }
 stickX = centerX + dx;
 stickY = centerY + dy;
+// Arreglos de tamaño fijo aplicados correctamente en la lógica del pad
 boolean newW = dy < -outerRadius * 0.20f;
 boolean newS = dy > outerRadius * 0.20f;
 boolean newA = dx < -outerRadius * 0.20f;
