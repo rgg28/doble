@@ -2,12 +2,16 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <!-- CORRECCIÓN DEFINITIVA: Forzar la versión de plataforma 10.0 en el framework -->
     <TargetFramework>net8.0-windows10.0.17763.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <UseWindowsForms>true</UseWindowsForms>
     <SupportedOSPlatformVersion>10.0.17763.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+
+  <!-- NUEVO: Librería de ultra-baja latencia WebRTC para C# -->
+  <ItemGroup>
+    <PackageReference Include="SIPSorcery" Version="6.0.7" />
+  </ItemGroup>
 
 </Project>
