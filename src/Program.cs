@@ -239,13 +239,20 @@ PostMessage(_wowHandle, mouseMsg, IntPtr.Zero, lParam);
 }
 private static string ExtractJsonValue(string json, string key)
 {
-string search = """ + key + "":"";
-int start = json.IndexOf(search);
-if (start == -1) return "";
-start += search.Length;
-int end = json.IndexOf(""", start);
-if (end == -1) return "";
-return json.Substring(start, end - start);
+private static string ExtractJsonValue(string json, string key)
+{
+    // CORRECCIÓN LÍNEA 242: Escapado clásico con barra invertida \"
+    string search = "\"" + key + "\":\"";
+    int start = json.IndexOf(search);
+    if (start == -1) return "";
+    
+    start += search.Length;
+    
+    // CORRECCIÓN LÍNEA 246: Busca la comilla de cierre \" de forma segura
+    int end = json.IndexOf("\"", start);
+    if (end == -1) return "";
+    
+    return json.Substring(start, end - start);
 }
 private static void ResetUI() { _btnStart!.Invoke((MethodInvoker)(() => { _btnStart.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; _txtConnectionId!.Enabled = true; _lblStatus!.Text = "Estado: Desconectado."; _lblStatus.ForeColor = Color.Gray; })); }
 }
