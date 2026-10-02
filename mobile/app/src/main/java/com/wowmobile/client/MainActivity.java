@@ -35,13 +35,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     private volatile boolean isRunning = false;
 
-    // TODO: RECUERDA CAMBIAR ESTA IP POR LA QUE TE DÉ EL COMANDO "ipconfig" EN TU PC
-    private static final String PC_IP = "192.168.1.50"; 
+    // IP CORREGIDA AUTOMÁTICAMENTE CON TU IP REAL DE RED
+    private static final String PC_IP = "192.168.1.12"; 
     private static final int PC_PORT = 8888;
 
     private DPadView dPadView;
     private JumpButtonView jumpButtonView;
-    private MapButtonView mapButtonView; // Nuevo botón de mapa
+    private MapButtonView mapButtonView; 
 
     // Colores UI originales heredados
     public static final int UI_BG_DARK = Color.argb(155, 5, 8, 13);
@@ -105,12 +105,12 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         // 4. Control Derecho Superior: Botón flotante para el Mapa (Tecla M)
         mapButtonView = new MapButtonView(this);
         FrameLayout.LayoutParams mapParams = new FrameLayout.LayoutParams(
-                dp(60), // Ligeramente más pequeño para mantener jerarquía visual
+                dp(60), 
                 dp(60),
                 Gravity.BOTTOM | Gravity.RIGHT
         );
-        mapParams.rightMargin = dp(42);   // Alineado verticalmente con el de saltar
-        mapParams.bottomMargin = dp(125); // Posicionado justo arriba del de saltar
+        mapParams.rightMargin = dp(42);   
+        mapParams.bottomMargin = dp(125); 
         mainContainer.addView(mapButtonView, mapParams);
 
         // 5. Hilo de Streaming
@@ -259,13 +259,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     @Override protected void onDestroy() { isRunning = false; closeConnection(); super.onDestroy(); }
 
     // ============================================================
-    // VISTA DEL BOTÓN DE MAPA (NUEVA INTERFAZ)
+    // VISTA DEL BOTÓN DE MAPA
     // ============================================================
 
     private static class MapButtonView extends View {
-private final MainActivity act;
-private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final MainActivity act;
+        private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
 private boolean isPressed = false;
 MapButtonView(Context context) {
@@ -300,7 +300,7 @@ int action = event.getActionMasked();
 switch (action) {
 case MotionEvent.ACTION_DOWN:
 isPressed = true;
-act.sendStroke("M", true); // Envía la tecla 'M'
+act.sendStroke("M", true);
 invalidate();
 return true;
 case MotionEvent.ACTION_UP:
