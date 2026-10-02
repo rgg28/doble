@@ -239,28 +239,30 @@ PostMessage(_wowHandle, mouseMsg, IntPtr.Zero, lParam);
 }
 }
 }
-private static string ExtractJsonValue(string json, string key)
-{
-string search = """ + key + "":"";
-int start = json.IndexOf(search);
-if (start == -1) return "";
-start += search.Length;
-int end = json.IndexOf(""", start);
-if (end == -1) return "";
-return json.Substring(start, end - start);
+    private static string ExtractJsonValue(string json, string key)
+    {
+        string search = "\"" + key + "\":\"";
+        int start = json.IndexOf(search);
+        if (start == -1) return "";
+        start += search.Length;
+        int end = json.IndexOf("\"", start);
+        if (end == -1) return "";
+        return json.Substring(start, end - start);
+    }
+
+    private static void ResetUI() 
+    { 
+        if (_btnStart != null && _btnStart.IsHandleCreated)
+        {
+            _btnStart.Invoke((MethodInvoker)(() => { 
+                _btnStart.Enabled = true; 
+                _btnBrowse!.Enabled = true; 
+                _txtWowPath!.Enabled = true; 
+                _txtConnectionId!.Enabled = true; 
+                _lblStatus!.Text = "Estado: Desconectado."; 
+                _lblStatus.ForeColor = Color.Gray; 
+            })); 
+        }
+    }
 }
-private static void ResetUI()
-{
-if (_btnStart != null && _btnStart.IsHandleCreated)
-{
-_btnStart.Invoke((MethodInvoker)(() => {
-_btnStart.Enabled = true;
-_btnBrowse!.Enabled = true;
-_txtWowPath!.Enabled = true;
-_txtConnectionId!.Enabled = true;
-_lblStatus!.Text = "Estado: Desconectado.";
-_lblStatus.ForeColor = Color.Gray;
-}));
-}
-}
-}                       
+
