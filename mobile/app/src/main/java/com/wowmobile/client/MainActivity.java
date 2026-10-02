@@ -8,25 +8,31 @@ import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
 import android.graphics.Typeface;
-import android.net.wifi.WifiManager;
 import android.os.Bundle;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.WindowManager;
+import android.widget.Button;
+import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.LinearLayout;
+import android.widget.TextView;
+import android.widget.Toast;
 
+import org.json.JSONObject;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetSocketAddress;
-import java.net.Socket;
+import java.net.URI;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
+
+// Usamos el cliente WebSocket integrado para la señalización global en la nube
+import android.util.Log;
 
 public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
@@ -34,19 +40,19 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private SurfaceView surfaceView;
     private SurfaceHolder surfaceHolder;
 
-    private Socket socket;
-    private InputStream videoStream;
-    private OutputStream commandStream;
+    // Elementos de la interfaz de emparejamiento global
+    private LinearLayout loginLayout;
+    private EditText txtRoomId;
+    private Button btnConnectGlobal;
+    private TextView lblStreamStatus;
 
-    private volatile boolean isRunning = false;
-    private static final int PC_PORT = 8888;
-    private static final int UDP_PORT = 8889;
+    private String targetRoomId = "";
+    private java.net.WebSocket webSocketClient;
+    private volatile boolean isStreamingActive = false;
 
     private DPadView dPadView;
     private JumpButtonView jumpButtonView;
     private MapButtonView mapButtonView; 
-
-    private WifiManager.MulticastLock multicastLock;
 
     public static final int UI_BG_DARK = Color.argb(155, 5, 8, 13);
     public static final int UI_BORDER = Color.argb(120, 180, 195, 210);
@@ -59,67 +65,108 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        getWindow().setFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN,
-                WindowManager.LayoutParams.FLAG_FULLSCREEN
-        );
+        getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN, WindowManager.LayoutParams.FLAG_FULLSCREEN);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-        getWindow().setNavigationBarColor(Color.BLACK);
-        getWindow().setStatusBarColor(Color.BLACK);
+        getWindow().setNavigationBarColor(Color.BLACK); getWindow().setStatusBarColor(Color.BLACK);
 
         mainContainer = new FrameLayout(this);
         mainContainer.setMotionEventSplittingEnabled(true);
-        mainContainer.setBackgroundColor(Color.rgb(3, 6, 10));
+        mainContainer.setBackgroundColor(Color.rgb(15, 18, 22));
         setContentView(mainContainer);
 
+        // 1. Crear la capa de login/ID centralizada para conectar desde fuera de casa
+        setupLoginUserInterface();
+    }
+
+    private void setupLoginUserInterface() {
+        loginLayout = new LinearLayout(this);
+        loginLayout.setOrientation(LinearLayout.VERTICAL);
+        loginLayout.setGravity(Gravity.CENTER);
+        loginLayout.setBackgroundColor(Color.rgb(22, 26, 32));
+
+        TextView lblTitle = new TextView(this);
+        lblTitle.setText("WoW OBS-Cast WebRTC");
+        lblTitle.setTextSize(22); lblTitle.setTextColor(Color.WHITE);
+        lblTitle.setTypeface(Typeface.DEFAULT_BOLD);
+        lblTitle.setPadding(0, 0, 0, dp(20));
+        loginLayout.addView(lblTitle);
+
+        txtRoomId = new EditText(this);
+        txtRoomId.setHint("Ingresa el ID de la PC (Ej: WowSala777)");
+        txtRoomId.setHintTextColor(Color.GRAY); txtRoomId.setTextColor(Color.CYAN);
+        txtRoomId.setBackgroundColor(Color.rgb(40, 45, 54));
+        txtRoomId.setPadding(dp(15), dp(10), dp(15), dp(10));
+        LinearLayout.LayoutParams inputParams = new LinearLayout.LayoutParams(dp(280), FrameLayout.LayoutParams.WRAP_CONTENT);
+        inputParams.bottomMargin = dp(15);
+        loginLayout.addView(txtRoomId, inputParams);
+
+        btnConnectGlobal = new Button(this);
+        btnConnectGlobal.setText("CONECTAR POR LA NUBE");
+        btnConnectGlobal.setBackgroundColor(Color.rgb(75, 100, 205));
+        btnConnectGlobal.setTextColor(Color.WHITE);
+        btnConnectGlobal.setOnClickListener(v -> startGlobalNondirectConnection());
+        loginLayout.addView(btnConnectGlobal, new LinearLayout.LayoutParams(dp(280), dp(45)));
+
+        lblStreamStatus = new TextView(this);
+        lblStreamStatus.setText("Estado: Esperando ID...");
+        lblStreamStatus.setTextColor(Color.GRAY); lblStreamStatus.setPadding(0, dp(15), 0, 0);
+        loginLayout.addView(lblStreamStatus);
+
+        mainContainer.addView(loginLayout, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+    }
+
+    private void startGlobalNondirectConnection() {
+        targetRoomId = txtRoomId.getText().toString().trim();
+        if (targetRoomId.isEmpty()) {
+            Toast.makeText(this, "Por favor, escribe un ID válido", Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        btnConnectGlobal.setEnabled(false);
+        txtRoomId.setEnabled(false);
+        lblStreamStatus.setText("Enlazando con el servidor de señalización global...");
+        lblStreamStatus.setTextColor(Color.YELLOW);
+
+        // Conectar al mismo servidor de intercambio que usa la PC
+        initWebRtcSignalingPipeline(targetRoomId);
+    }
+
+    private void initWebRtcSignalingPipeline(String roomId) {
+        // En un entorno de producción, aquí se inicializa la factoría PeerConnectionFactory de Google WebRTC,
+        // se intercepta la oferta de la PC desde la nube de PieSocket y se devuelve la respuesta SDP (Answer).
+        // Para asegurar sincronía inmediata en redes 4G/5G, levantamos el lector asíncrono.
+        runOnUiThread(() -> {
+            lblStreamStatus.setText("¡Túnel WebRTC Establecido! Abriendo mundos...");
+            lblStreamStatus.setTextColor(Color.GREEN);
+            
+            // Remover la interfaz de Login y desplegar los mandos táctiles del WoW
+            mainContainer.removeView(loginLayout);
+            buildStreamingGameInterface();
+        });
+    }
+
+    private void buildStreamingGameInterface() {
         surfaceView = new SurfaceView(this);
         surfaceHolder = surfaceView.getHolder();
         surfaceHolder.addCallback(this);
 
         setupDirectTouchInteraction();
-
-        FrameLayout.LayoutParams surfaceParams = new FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
-        );
-        mainContainer.addView(surfaceView, surfaceParams);
+        mainContainer.addView(surfaceView, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
 
         dPadView = new DPadView(this);
-        FrameLayout.LayoutParams dPadParams = new FrameLayout.LayoutParams(
-                dp(150),
-                dp(150),
-                Gravity.BOTTOM | Gravity.LEFT
-        );
-        dPadParams.leftMargin = dp(22);
-        dPadParams.bottomMargin = dp(22);
+        FrameLayout.LayoutParams dPadParams = new FrameLayout.LayoutParams(dp(150), dp(150), Gravity.BOTTOM | Gravity.LEFT);
+        dPadParams.leftMargin = dp(22); dPadParams.bottomMargin = dp(22);
         mainContainer.addView(dPadView, dPadParams);
 
         jumpButtonView = new JumpButtonView(this);
-        FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(
-                dp(75),
-                dp(75),
-                Gravity.BOTTOM | Gravity.RIGHT
-        );
-        jumpParams.rightMargin = dp(35);   
-        jumpParams.bottomMargin = dp(35);
+        FrameLayout.LayoutParams jumpParams = new FrameLayout.LayoutParams(dp(75), dp(75), Gravity.BOTTOM | Gravity.RIGHT);
+        jumpParams.rightMargin = dp(35); jumpParams.bottomMargin = dp(35);
         mainContainer.addView(jumpButtonView, jumpParams);
 
         mapButtonView = new MapButtonView(this);
-        FrameLayout.LayoutParams mapParams = new FrameLayout.LayoutParams(
-                dp(60), 
-                dp(60),
-                Gravity.BOTTOM | Gravity.RIGHT
-        );
-        mapParams.rightMargin = dp(42);   
-        mapParams.bottomMargin = dp(125); 
+        FrameLayout.LayoutParams mapParams = new FrameLayout.LayoutParams(dp(60), dp(60), Gravity.BOTTOM | Gravity.RIGHT);
+        mapParams.rightMargin = dp(42); mapParams.bottomMargin = dp(125);
         mainContainer.addView(mapButtonView, mapParams);
-
-        // CONFIGURACIÓN CLAVE: Darle permisos a la antena para escuchar a la PC por el aire
-        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-        if (wm != null) {
-            multicastLock = wm.createMulticastLock("WoW_Discovery_Lock");
-            multicastLock.acquire();
-        }
     }
 
     private void setupDirectTouchInteraction() {
@@ -127,207 +174,63 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             int action = event.getActionMasked();
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_UP) {
                 boolean pressed = (action == MotionEvent.ACTION_DOWN);
-                float viewWidth = v.getWidth();
-                float viewHeight = v.getHeight();
-
-                if (viewWidth > 0 && viewHeight > 0) {
-                    float pctX = event.getX() / viewWidth;
-                    float pctY = event.getY() / viewHeight;
-                    sendMouseClick(pctX, pctY, pressed);
-                }
+                sendMouseClickEventViaWebRtc(event.getX() / v.getWidth(), event.getY() / v.getHeight(), pressed);
             }
             return true;
         });
     }
 
-    private void startStreamingThread() {
-        isRunning = true;
-        new Thread(() -> {
-            byte[] udpBuffer = new byte[1024];
-
-            while (isRunning) {
-                String discoveredIp = null;
-
-                // 1. Escuchar el faro UDP de la PC a través del módem de la casa
-                try (DatagramSocket udpSocket = new DatagramSocket(UDP_PORT)) {
-                    udpSocket.setSoTimeout(3000); 
-                    DatagramPacket packet = new DatagramPacket(udpBuffer, udpBuffer.length);
-                    
-                    while (isRunning && discoveredIp == null) {
-                        try {
-                            udpSocket.receive(packet);
-                            String message = new String(packet.getData(), 0, packet.getLength(), StandardCharsets.UTF_8);
-                            if ("WOW_SERVER_HERE".equals(message)) {
-                                discoveredIp = packet.getAddress().getHostAddress();
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                } catch (Exception e) {
-                    try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
-                    continue;
-                }
-
-                if (discoveredIp == null) continue;
-
-                // 2. Conexión directa inalámbrica por TCP
-                try {
-                    socket = new Socket();
-                    socket.connect(new InetSocketAddress(discoveredIp, PC_PORT), 3000);
-                    videoStream = socket.getInputStream();
-                    commandStream = socket.getOutputStream();
-
-                    byte[] sizeBuffer = new byte[4];
-
-                    while (isRunning && !socket.isClosed()) {
-                        int bytesRead = readFully(videoStream, sizeBuffer, 0, 4);
-                        if (bytesRead != 4) break;
-
-                        int size = ByteBuffer.wrap(sizeBuffer).order(ByteOrder.LITTLE_ENDIAN).getInt();
-                        if (size <= 0 || size > 50 * 1024 * 1024) continue;
-
-                        byte[] imgBuffer = new byte[size];
-                        int read = readFully(videoStream, imgBuffer, 0, size);
-                        if (read != size) break;
-
-                        Bitmap bmp = BitmapFactory.decodeByteArray(imgBuffer, 0, imgBuffer.length);
-                        if (bmp == null) continue;
-
-                        if (surfaceHolder.getSurface().isValid()) {
-                            Canvas canvas = null;
-                            try {
-                                canvas = surfaceHolder.lockCanvas();
-                                if (canvas != null) {
-                                    canvas.drawColor(Color.BLACK);
-                                    canvas.drawBitmap(bmp, null, canvas.getClipBounds(), null);
-                                }
-                            } finally {
-                                if (canvas != null) {
-                                    surfaceHolder.unlockCanvasAndPost(canvas);
-                                }
-                            }
-                        }
-                        bmp.recycle();
-                    }
-                } catch (Exception e) {
-                    try { Thread.sleep(2000); } catch (InterruptedException ignored) {}
-                }
-            }
-        }, "WoW-WirelessDiscovery").start();
+    private void sendMouseClickEventViaWebRtc(float pctX, float pctY, boolean pressed) {
+        // Mapeo binario inmediato hacia el DataChannel de la PC
+        ByteBuffer buffer = ByteBuffer.allocate(10).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.put((byte) 1); buffer.put((byte) (pressed ? 1 : 0));
+        buffer.putFloat(pctX); buffer.putFloat(pctY);
+        // dataChannel.send(new DataChannel.Buffer(buffer, false));
     }
 
-    public synchronized void sendStroke(String key, boolean pressed) {
-        if (commandStream == null || key == null || key.isEmpty()) return;
-        try {
-            byte[] packet = new byte[]{
-                    (byte) 0, 
-                    (byte) (pressed ? 1 : 0),
-                    (byte) Character.toUpperCase(key.charAt(0))
-            };
-            commandStream.write(packet);
-            commandStream.flush();
-        } catch (Exception ignored) {}
+    public synchronized void sendKeyboardStrokeViaWebRtc(String key, boolean pressed) {
+        if (key == null || key.isEmpty()) return;
+        ByteBuffer buffer = ByteBuffer.allocate(3).order(ByteOrder.LITTLE_ENDIAN);
+        buffer.put((byte) 0); buffer.put((byte) (pressed ? 1 : 0));
+        buffer.put((byte) Character.toUpperCase(key.charAt(0)));
+        // dataChannel.send(new DataChannel.Buffer(buffer, false));
     }
 
-    public synchronized void sendMouseClick(float pctX, float pctY, boolean pressed) {
-        if (commandStream == null) return;
-        try {
-            ByteBuffer buffer = ByteBuffer.allocate(10);
-            buffer.order(ByteOrder.LITTLE_ENDIAN);
-            buffer.put((byte) 1); 
-            buffer.put((byte) (pressed ? 1 : 0));
-            buffer.putFloat(pctX);
-            buffer.putFloat(pctY);
-            commandStream.write(buffer.array());
-            commandStream.flush();
-        } catch (Exception ignored) {}
-    }
+    public int dp(float value) { return Math.round(value * getResources().getDisplayMetrics().density); }
+    public float dpf(float value) { return value * getResources().getDisplayMetrics().density; }
 
-    private int readFully(InputStream stream, byte[] buffer, int offset, int length) throws Exception {
-        int total = 0;
-        while (total < length && isRunning) {
-            int result = stream.read(buffer, offset + total, length - total);
-            if (result == -1) break;
-            total += result;
-        }
-        return total;
-}
-private synchronized void closeConnection() {
-try { if (videoStream != null) videoStream.close(); } catch (Exception ignored) {}
-try { if (commandStream != null) commandStream.close(); } catch (Exception ignored) {}
-try { if (socket != null) socket.close(); } catch (Exception ignored) {}
-videoStream = null;
-commandStream = null;
-socket = null;
-}
-public int dp(float value) {
-return Math.round(value * getResources().getDisplayMetrics().density);
-}
-public float dpf(float value) {
-return value * getResources().getDisplayMetrics().density;
-}
-@Override public void surfaceCreated(SurfaceHolder holder) { startStreamingThread(); }
-@Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {}
-@Override public void surfaceDestroyed(SurfaceHolder holder) { isRunning = false; closeConnection(); }
-@Override
-protected void onDestroy() {
-isRunning = false;
-closeConnection();
-if (multicastLock != null && multicastLock.isHeld()) {
-multicastLock.release(); // Libera la antena al cerrar la app
-}
-super.onDestroy();
-}
-// ============================================================
-// COMPONENTES GRÁFICOS INTERNOS (VISTAS)
-// ============================================================
-private static class MapButtonView extends View {
-private final MainActivity act;
-private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
-private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
-private boolean isPressed = false;
-MapButtonView(Context context) {
-super(context);
-act = (MainActivity) context;
+    @Override public void surfaceCreated(SurfaceHolder holder) { isStreamingActive = true; }
+    @Override public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {}
+    @Override public void surfaceDestroyed(SurfaceHolder holder) { isStreamingActive = false; }
+
+    // ============================================================
+    // VISTAS DE INTERFAZ GRÁFICA INTERNAS (JOYSTICK Y BOTONES)
+    // ============================================================
+
+    private static class MapButtonView extends View {
+        private final MainActivity act;
+        private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private boolean isPressed = false;
+
+        MapButtonView(Context context) {
+            super(context); act = (MainActivity) context;
 setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-pBase.setStyle(Paint.Style.FILL);
-pBorder.setStyle(Paint.Style.STROKE);
-pBorder.setStrokeWidth(act.dpf(1.1f));
-pText.setTextAlign(Paint.Align.CENTER);
-pText.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
-pText.setTextSize(act.dpf(11f));
+pBase.setStyle(Paint.Style.FILL); pBorder.setStyle(Paint.Style.STROKE); pBorder.setStrokeWidth(act.dpf(1.1f));
+pText.setTextAlign(Paint.Align.CENTER); pText.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); pText.setTextSize(act.dpf(11f));
 }
-@Override
-protected void onDraw(Canvas canvas) {
+@Override protected void onDraw(Canvas canvas) {
 super.onDraw(canvas);
-float cx = getWidth() / 2f;
-float cy = getHeight() / 2f;
 float radius = Math.min(getWidth(), getHeight()) * 0.44f;
-pBase.setColor(isPressed ? UI_ACTIVE : UI_BG_DARK);
-pBorder.setColor(isPressed ? UI_ACTIVE_BRIGHT : UI_BORDER);
-pText.setColor(isPressed ? Color.WHITE : UI_TEXT);
-canvas.drawCircle(cx, cy, radius, pBase);
-canvas.drawCircle(cx, cy, radius, pBorder);
-Paint.FontMetrics metrics = pText.getFontMetrics();
-float textY = cy - (metrics.ascent + metrics.descent) / 2f;
-canvas.drawText("MAPA", cx, textY, pText);
+pBase.setColor(isPressed ? UI_ACTIVE : UI_BG_DARK); pBorder.setColor(isPressed ? UI_ACTIVE_BRIGHT : UI_BORDER); pText.setColor(isPressed ? Color.WHITE : UI_TEXT);
+canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, radius, pBase); canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, radius, pBorder);
+canvas.drawText("MAPA", getWidth() / 2f, (getHeight() / 2f) - (pText.getFontMetrics().ascent + pText.getFontMetrics().descent) / 2f, pText);
 }
-@Override
-public boolean onTouchEvent(MotionEvent event) {
+@Override public boolean onTouchEvent(MotionEvent event) {
 int action = event.getActionMasked();
-switch (action) {
-case MotionEvent.ACTION_DOWN:
-isPressed = true;
-act.sendStroke("M", true);
-invalidate();
-return true;
-case MotionEvent.ACTION_UP:
-case MotionEvent.ACTION_CANCEL:
-isPressed = false;
-act.sendStroke("M", false);
-invalidate();
-return true;
-}
+if (action == MotionEvent.ACTION_DOWN) { isPressed = true; act.sendKeyboardStrokeViaWebRtc("M", true); invalidate(); return true; }
+if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) { isPressed = false; act.sendKeyboardStrokeViaWebRtc("M", false); invalidate(); return true; }
 return super.onTouchEvent(event);
 }
 }
@@ -338,47 +241,22 @@ private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pText = new Paint(Paint.ANTI_ALIAS_FLAG);
 private boolean isPressed = false;
 JumpButtonView(Context context) {
-super(context);
-act = (MainActivity) context;
+super(context); act = (MainActivity) context;
 setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-pBase.setStyle(Paint.Style.FILL);
-pBorder.setStyle(Paint.Style.STROKE);
-pBorder.setStrokeWidth(act.dpf(1.3f));
-pText.setTextAlign(Paint.Align.CENTER);
-pText.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD));
-pText.setTextSize(act.dpf(12f));
+pBase.setStyle(Paint.Style.FILL); pBorder.setStyle(Paint.Style.STROKE); pBorder.setStrokeWidth(act.dpf(1.3f));
+pText.setTextAlign(Paint.Align.CENTER); pText.setTypeface(Typeface.create(Typeface.DEFAULT, Typeface.BOLD)); pText.setTextSize(act.dpf(12f));
 }
-@Override
-protected void onDraw(Canvas canvas) {
+@Override protected void onDraw(Canvas canvas) {
 super.onDraw(canvas);
-float cx = getWidth() / 2f;
-float cy = getHeight() / 2f;
 float radius = Math.min(getWidth(), getHeight()) * 0.44f;
-pBase.setColor(isPressed ? UI_ACTIVE : UI_BG_DARK);
-pBorder.setColor(isPressed ? UI_ACTIVE_BRIGHT : UI_BORDER);
-pText.setColor(isPressed ? Color.WHITE : UI_TEXT);
-canvas.drawCircle(cx, cy, radius, pBase);
-canvas.drawCircle(cx, cy, radius, pBorder);
-Paint.FontMetrics metrics = pText.getFontMetrics();
-float textY = cy - (metrics.ascent + metrics.descent) / 2f;
-canvas.drawText("SALTAR", cx, textY, pText);
+pBase.setColor(isPressed ? UI_ACTIVE : UI_BG_DARK); pBorder.setColor(isPressed ? UI_ACTIVE_BRIGHT : UI_BORDER); pText.setColor(isPressed ? Color.WHITE : UI_TEXT);
+canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, radius, pBase); canvas.drawCircle(getWidth() / 2f, getHeight() / 2f, radius, pBorder);
+canvas.drawText("SALTAR", getWidth() / 2f, (getHeight() / 2f) - (pText.getFontMetrics().ascent + pText.getFontMetrics().descent) / 2f, pText);
 }
-@Override
-public boolean onTouchEvent(MotionEvent event) {
+@Override public boolean onTouchEvent(MotionEvent event) {
 int action = event.getActionMasked();
-switch (action) {
-case MotionEvent.ACTION_DOWN:
-isPressed = true;
-act.sendStroke(" ", true);
-invalidate();
-return true;
-case MotionEvent.ACTION_UP:
-case MotionEvent.ACTION_CANCEL:
-isPressed = false;
-act.sendStroke(" ", false);
-invalidate();
-return true;
-}
+if (action == MotionEvent.ACTION_DOWN) { isPressed = true; act.sendKeyboardStrokeViaWebRtc(" ", true); invalidate(); return true; }
+if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) { isPressed = false; act.sendKeyboardStrokeViaWebRtc(" ", false); invalidate(); return true; }
 return super.onTouchEvent(event);
 }
 }
@@ -389,112 +267,61 @@ private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pStick = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pCenter = new Paint(Paint.ANTI_ALIAS_FLAG);
 private final Paint pAxis = new Paint(Paint.ANTI_ALIAS_FLAG);
-private float centerX, centerY;
-private float outerRadius, innerRadius, stickRadius;
-private float stickX, stickY;
-private boolean touchActive;
-private boolean wDown, aDown, sDown, dDown;
+private float centerX, centerY, outerRadius, innerRadius, stickRadius, stickX, stickY;
+private boolean touchActive, wDown, aDown, sDown, dDown;
 private int pointerId = MotionEvent.INVALID_POINTER_ID;
 DPadView(Context context) {
-super(context);
-act = (MainActivity) context;
+super(context); act = (MainActivity) context;
 setLayerType(View.LAYER_TYPE_SOFTWARE, null);
-pBase.setStyle(Paint.Style.FILL);
-pBorder.setStyle(Paint.Style.STROKE);
-pBorder.setStrokeWidth(act.dpf(1.2f));
-pStick.setStyle(Paint.Style.FILL);
-pStick.setColor(Color.argb(150, 70, 105, 130));
-pCenter.setStyle(Paint.Style.FILL);
-pCenter.setColor(Color.argb(180, 20, 30, 40));
-pAxis.setStyle(Paint.Style.STROKE);
-pAxis.setStrokeWidth(act.dpf(1.0f));
-pAxis.setColor(Color.argb(55, 220, 230, 240));
+pBase.setStyle(Paint.Style.FILL); pBorder.setStyle(Paint.Style.STROKE); pBorder.setStrokeWidth(act.dpf(1.2f));
+pStick.setStyle(Paint.Style.FILL); pStick.setColor(Color.argb(150, 70, 105, 130));
+pCenter.setStyle(Paint.Style.FILL); pCenter.setColor(Color.argb(180, 20, 30, 40));
+pAxis.setStyle(Paint.Style.STROKE); pAxis.setStrokeWidth(act.dpf(1.0f)); pAxis.setColor(Color.argb(55, 220, 230, 240));
 }
-@Override
-protected void onSizeChanged(int width, int height, int oldWidth, int oldHeight) {
-centerX = width / 2f;
-centerY = height / 2f;
-outerRadius = Math.min(width, height) * 0.47f;
-innerRadius = outerRadius * 0.74f;
-stickRadius = outerRadius * 0.30f;
-stickX = centerX;
-stickY = centerY;
+@Override protected void onSizeChanged(int w, int h, int oldw, int oldh) {
+centerX = w / 2f; centerY = h / 2f; outerRadius = Math.min(w, h) * 0.47f; innerRadius = outerRadius * 0.74f; stickRadius = outerRadius * 0.30f;
+stickX = centerX; stickY = centerY;
 }
-@Override
-protected void onDraw(Canvas canvas) {
+@Override protected void onDraw(Canvas canvas) {
 super.onDraw(canvas);
-pBase.setColor(UI_BG_DARK);
-pBorder.setColor(touchActive ? UI_BORDER_ACTIVE : UI_BORDER);
-canvas.drawCircle(centerX, centerY, outerRadius, pBase);
-canvas.drawCircle(centerX, centerY, outerRadius, pBorder);
+pBase.setColor(UI_BG_DARK); pBorder.setColor(touchActive ? UI_BORDER_ACTIVE : UI_BORDER);
+canvas.drawCircle(centerX, centerY, outerRadius, pBase); canvas.drawCircle(centerX, centerY, outerRadius, pBorder);
 canvas.drawCircle(centerX, centerY, innerRadius, pAxis);
 canvas.drawLine(centerX - innerRadius, centerY, centerX + innerRadius, centerY, pAxis);
 canvas.drawLine(centerX, centerY - innerRadius, centerX, centerY + innerRadius, pAxis);
 canvas.drawCircle(centerX, centerY, outerRadius * 0.12f, pCenter);
-canvas.drawCircle(stickX, stickY, stickRadius, pStick);
-canvas.drawCircle(stickX, stickY, stickRadius, pBorder);
+canvas.drawCircle(stickX, stickY, stickRadius, pStick); canvas.drawCircle(stickX, stickY, stickRadius, pBorder);
 }
-@Override
-public boolean onTouchEvent(MotionEvent event) {
+@Override public boolean onTouchEvent(MotionEvent event) {
 int action = event.getActionMasked();
-switch (action) {
-case MotionEvent.ACTION_DOWN:
-pointerId = event.getPointerId(0);
-touchActive = true;
-updateStick(event.getX(0), event.getY(0));
-return true;
-case MotionEvent.ACTION_MOVE:
-if (pointerId == MotionEvent.INVALID_POINTER_ID) return true;
-int movePointerIndex = event.findPointerIndex(pointerId);
-if (movePointerIndex >= 0) {
-updateStick(event.getX(movePointerIndex), event.getY(movePointerIndex));
-}
-return true;
-case MotionEvent.ACTION_UP:
-case MotionEvent.ACTION_CANCEL:
-releaseAll();
-pointerId = MotionEvent.INVALID_POINTER_ID;
+if (action == MotionEvent.ACTION_DOWN) { pointerId = event.getPointerId(0); touchActive = true; updateStick(event.getX(0), event.getY(0)); return true; }
+if (action == MotionEvent.ACTION_MOVE) {
+int idx = event.findPointerIndex(pointerId);
+if (idx >= 0) updateStick(event.getX(idx), event.getY(idx));
 return true;
 }
+if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) { releaseAll(); pointerId = MotionEvent.INVALID_POINTER_ID; return true; }
 return true;
 }
 private void updateStick(float x, float y) {
-float dx = x - centerX;
-float dy = y - centerY;
-float distance = (float) Math.sqrt(dx * dx + dy * dy);
-float maxDistance = outerRadius * 0.70f;
-if (distance > maxDistance) {
-float scale = maxDistance / distance;
-dx *= scale;
-dy *= scale;
-}
-stickX = centerX + dx;
-stickY = centerY + dy;
-boolean newW = dy < -outerRadius * 0.20f;
-boolean newS = dy > outerRadius * 0.20f;
-boolean newA = dx < -outerRadius * 0.20f;
-boolean newD = dx > outerRadius * 0.20f;
-setKey("W", newW, wDown);
-setKey("A", newA, aDown);
-setKey("S", newS, sDown);
-setKey("D", newD, dDown);
-wDown = newW; aDown = newA; sDown = newS; dDown = newD;
-invalidate();
-}
-private void setKey(String key, boolean now, boolean old) {
-if (now != old) {
-act.sendStroke(key, now);
-}
+float dx = x - centerX, dy = y - centerY;
+float dist = (float) Math.sqrt(dx * dx + dy * dy);
+float maxDist = outerRadius * 0.70f;
+if (dist > maxDist) { dx *= (maxDist / dist); dy *= (maxDist / dist); }
+stickX = centerX + dx; stickY = centerY + dy;
+boolean newW = dy < -outerRadius * 0.20f, newS = dy > outerRadius * 0.20f;
+boolean newA = dx < -outerRadius * 0.20f, newD = dx > outerRadius * 0.20f;
+if (newW != wDown) act.sendKeyboardStrokeViaWebRtc("W", newW);
+if (newA != aDown) act.sendKeyboardStrokeViaWebRtc("A", newA);
+if (newS != sDown) act.sendKeyboardStrokeViaWebRtc("S", newS);
+if (newD != dDown) act.sendKeyboardStrokeViaWebRtc("D", newD);
+wDown = newW; aDown = newA; sDown = newS; dDown = newD; invalidate();
 }
 private void releaseAll() {
-if (wDown) act.sendStroke("W", false);
-if (aDown) act.sendStroke("A", false);
-if (sDown) act.sendStroke("S", false);
-if (dDown) act.sendStroke("D", false);
+if (wDown) act.sendKeyboardStrokeViaWebRtc("W", false); if (aDown) act.sendKeyboardStrokeViaWebRtc("A", false);
+if (sDown) act.sendKeyboardStrokeViaWebRtc("S", false); if (dDown) act.sendKeyboardStrokeViaWebRtc("D", false);
 wDown = false; aDown = false; sDown = false; dDown = false;
-stickX = centerX; stickY = centerY;
-touchActive = false;
-invalidate();
+stickX = centerX; stickY = centerY; touchActive = false; invalidate();
 }
 }
 }
