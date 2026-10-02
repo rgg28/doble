@@ -1,0 +1,108 @@
+name: Compilar Servidor PC y App Android
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  # ============================================================
+  # COMPILACIÓN DEL SERVIDOR PC (C# / MSBUILD WINDOWS)
+  # ============================================================
+  compilar-pc:
+    name: Compilar Servidor PC
+    runs-on: windows-latest
+
+    steps:
+    - name: Descargar código fuente
+      uses: actions/checkout@v4
+
+    - name: Configurar MSBuild (Herramientas Visual Studio)
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Configurar entorno .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Restaurar dependencias de NuGet
+      run: msbuild WoWStreamServer.sln -t:Restore -p:Configuration=Release
+
+    - name: Compilar servidor con MSBuild
+      run: msbuild WoWStreamServer.sln -p:Configuration=Release
+
+    - name: Subir ejecutable compilado (Artifact)
+      uses: actions/upload-artifact@v4
+      with:
+        name: Servidor-PC-WowStream
+        path: src/bin/Release/net8.0-windows*/
+
+  # ============================================================
+  # COMPILACIÓN Y FIRMADO DE LA APP ANDROID (CON GRADLE GLOBAL)
+  # ============================================================
+  compilar-android:
+    name: Compilar y Firmar App Android
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Descargar código fuente
+      uses: actions/checkout@v4
+
+    - name: Configurar Java 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'zulu'
+        java-version: '17'
+
+    # Instala el entorno completo de Gradle en el servidor de GitHub Actions
+    - name: Configurar Gradle Global
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 8.5
+
+    # Lanza la compilación de producción apuntando a tu módulo móvil
+    - name: Compilar APK en modo Release (Sin firmar)
+      run: gradle :app:assembleRelease --no-daemon
+      working-directory: ./mobile
+
+    # Genera las llaves criptográficas de producción válidas por 30 años en caliente
+    - name: Autogenerar Keystore de firma sobre la marcha
+      run: |
+        keytool -genkeypair \
+          -v \
+          -keystore release.keystore \
+          -alias wowalias \
+          -keyalg RSA \
+          -keysize 2048 \
+          -validity 10000 \
+          -storepass temporalwow123 \
+          -keypass temporalwow123 \
+          -dname "CN=WowMobile, OU=Desarrollo, O=WowClient, L=Local, S=Local, C=ES"
+      working-directory: ./mobile
+
+    # Inyecta los certificados dentro del binario localizado para que Android lo reconozca
+    - name: Firmar APK con apksigner de Android
+      run: |
+        BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
+        echo "Usando build-tools desde: $BUILD_TOOLS_DIR"
+        
+        UNSIGNED_APK=$(find mobile/app/build/outputs/apk/release/ -name "*.apk" | head -n 1)
+        echo "APK origen encontrado: $UNSIGNED_APK"
+        
+        $BUILD_TOOLS_DIR/apksigner sign \
+          --ks mobile/release.keystore \
+          --ks-key-alias wowalias \
+          --ks-pass pass:temporalwow123 \
+          --key-pass pass:temporalwow123 \
+          --out mobile/app/build/outputs/apk/release/WowMobile-Release-Firmado.apk \
+          "$UNSIGNED_APK"
+          
+        echo "[OK] ¡APK firmado con éxito!"
+
+    - name: Subir APK final firmado (Artifact)
+      uses: actions/upload-artifact@v4
+      with:
+        name: App-Android-WowStream-Firmado
+        path: mobile/app/build/outputs/apk/release/WowMobile-Release-Firmado.apk
