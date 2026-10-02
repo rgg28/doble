@@ -139,15 +139,12 @@ class Program
         Application.Run(_mainForm);
     }
 
-    // ============================================================
-    // ACCIÓN DEL BOTÓN "BUSCAR..."
-    // ============================================================
     private static void BtnBrowse_Click(object? sender, EventArgs e)
     {
         using (OpenFileDialog openFileDialog = new OpenFileDialog())
         {
-            openFileDialog.Filter = "Ejecutable de WoW (Wow.exe)|Wow.exe|Todos los archivos (*.exe)|*.exe";
-            openFileDialog.Title = "Selecciona el archivo Wow.exe de tu World of Warcraft";
+            openFileDialog.Filter = "Ejecutable de WoW (*.exe)|*.exe|Todos los archivos (*.*)|*.*";
+            openFileDialog.Title = "Selecciona el archivo ejecutable de tu World of Warcraft";
 
             if (openFileDialog.ShowDialog() == DialogResult.OK)
             {
@@ -159,16 +156,13 @@ class Program
         }
     }
 
-    // ============================================================
-    // ACCIÓN DEL BOTÓN "INICIAR SERVIDOR"
-    // ============================================================
     private static void BtnStart_Click(object? sender, EventArgs e)
     {
         string wowPath = _txtWowPath?.Text ?? "";
 
         if (!File.Exists(wowPath))
         {
-            MessageBox.Show("La ruta seleccionada no es válida o el archivo Wow.exe no existe.", "Error de Ruta", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show("La ruta seleccionada no es válida o el archivo ejecutable no existe.", "Error de Ruta", MessageBoxButtons.OK, MessageBoxIcon.Error);
             return;
         }
 
@@ -180,40 +174,46 @@ class Program
             _lblStatus!.Text = "Estado: Iniciando WoW e hilos de red...";
             _lblStatus.ForeColor = Color.Orange;
 
-            ProcessStartInfo startInfo = new ProcessStartInfo { FileName = wowPath, Arguments = "-windowed" };
+            ProcessStartInfo startInfo = new ProcessStartInfo 
+            { 
+                FileName = wowPath, 
+                Arguments = "-windowed",
+                UseShellExecute = true // Requerido para heredar permisos de administrador correctamente
+            };
+            
             _wowProcess = Process.Start(startInfo);
             
-            if (_wowProcess != null)
-            {
-                Thread serverThread = new Thread(() => RunServerLogic(_wowProcess)) { IsBackground = true };
-                serverThread.Start();
-            }
+            // Separamos la lógica de red en un hilo para capturar fallos específicos de red
+            Thread serverThread = new Thread(RunServerNetworkLogic) { IsBackground = true };
+            serverThread.Start();
         }
         catch (Exception ex)
         {
-            MessageBox.Show($"Error al arrancar el proceso: {ex.Message}", "Fallo Crítico", MessageBoxButtons.OK, MessageBoxIcon.Error);
-            _btnStart!.Enabled = true;
-            _btnBrowse!.Enabled = true;
-            _txtWowPath!.Enabled = true;
-            _lblStatus!.Text = "Estado: Error al iniciar.";
-            _lblStatus.ForeColor = Color.Red;
+            MessageBox.Show($"Error crítico al arrancar el proceso del juego:\n\n{ex.Message}", "Fallo de Ejecución", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            ResetUI();
         }
     }
 
-    private static void RunServerLogic(Process wowProcess)
+    private static void RunServerNetworkLogic()
     {
         try
         {
-            wowProcess.WaitForInputIdle();
-            Thread.Sleep(2000);
-            wowProcess.ProcessorAffinity = (IntPtr)0x30;
-            _wowHandle = wowProcess.MainWindowHandle;
+            if (_wowProcess != null)
+            {
+                // Esperar de forma segura a que la ventana se dibuje
+                Thread.Sleep(3000); 
+                _wowProcess.Refresh();
+                _wowHandle = _wowProcess.MainWindowHandle;
+                
+                try { _wowProcess.ProcessorAffinity = (IntPtr)0x30; } catch { /* Ignorar si no permite cambiar afinidad */ }
+            }
+
+            // Forzar el arranque del socket enlazado a la red local
+            _streamServer = new TcpListener(IPAddress.Any, 8888);
+            _streamServer.Start();
 
             Thread udpThread = new Thread(StartUdpBeacon) { IsBackground = true };
             udpThread.Start();
-
-            _streamServer = new TcpListener(IPAddress.Any, 8888);
-            _streamServer.Start();
 
             _mainForm?.Invoke((MethodInvoker)delegate {
                 _lblStatus!.Text = "Estado: ¡En línea! Esperando móvil...";
@@ -229,15 +229,31 @@ class Program
                     _lblStatus.ForeColor = Color.Cyan;
                 });
                 
-                ThreadPool.QueueUserWorkItem(state => ProcessAndStreamVideo(client, wowProcess));
+                ThreadPool.QueueUserWorkItem(state => ProcessAndStreamVideo(client, _wowProcess ?? new Process()));
                 ThreadPool.QueueUserWorkItem(state => HandleIncomingControls(client, _wowHandle));
             }
         }
-        catch 
+        catch (Exception ex)
         {
+            // ESTO NOS DIRÁ EL ERROR REAL (Ej: "Acceso denegado", "Puerto ya en uso", etc.)
+            MessageBox.Show($"Error detallado del Servidor de Red:\n\n{ex.Message}\n\nTarget: {ex.StackTrace}", "Fallo de Inicialización", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+
             _mainForm?.Invoke((MethodInvoker)delegate {
-                _lblStatus!.Text = "Estado: Error en la red o juego cerrado.";
+                _lblStatus!.Text = "Estado: Error en la red.";
                 _lblStatus.ForeColor = Color.Red;
+                ResetUI();
+            });
+        }
+    }
+
+    private static void ResetUI()
+    {
+        if (_mainForm != null && _mainForm.IsHandleCreated)
+        {
+            _mainForm.Invoke((MethodInvoker)delegate {
+                _btnStart!.Enabled = true;
+                _btnBrowse!.Enabled = true;
+                _txtWowPath!.Enabled = true;
             });
         }
     }
@@ -269,23 +285,20 @@ class Program
     private static void ProcessAndStreamVideo(TcpClient client, Process process)
     {
         using NetworkStream stream = client.GetStream();
-        while (client.Connected && !process.HasExited)
+        while (client.Connected && (process == null || !process.HasExited))
         {
             try
             {
                 using (Bitmap bmp = new Bitmap(1280, 720))
                 {
-                    using (Graphics g = Graphics.FromImage(bmp))
-                    {
-                        g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
-                    }
-
-                    using (MemoryStream ms = new MemoryStream())
-                    {
-                        // CORRECCIÓN CS0104 y CS1503: Nombre calificado completo y casteo correcto del parámetro de calidad para JpegEncoder
-                        EncoderParameters encoderParams = new EncoderParameters(1);
-                        encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 60L); 
-                        
+using (Graphics g = Graphics.FromImage(bmp))
+{
+g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
+}
+using (MemoryStream ms = new MemoryStream())
+{
+EncoderParameters encoderParams = new EncoderParameters(1);
+encoderParams.Param = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 60L);
 ImageCodecInfo? jpegCodec = GetEncoder(ImageFormat.Jpeg);
 if (jpegCodec != null)
 {
