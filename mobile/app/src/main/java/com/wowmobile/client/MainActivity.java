@@ -2,6 +2,8 @@ package com.wowmobile.client;
 
 import android.app.Activity;
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -22,7 +24,8 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 
-public class MainActivity extends Activity implements SurfaceHolder.Callback {
+public class MainActivity extends Activity
+        implements SurfaceHolder.Callback {
 
     // ============================================================
     // STREAM
@@ -61,7 +64,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     private final Handler handler = new Handler();
 
     // ============================================================
-    // ESTILO UI
+    // COLORES UI
     // ============================================================
 
     public static final int UI_BG =
@@ -93,17 +96,17 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     // ============================================================
 
     /*
-     * El servidor puede interpretar G según el contexto:
+     * G = interacción contextual.
+     *
+     * El servidor puede decidir qué hacer según el objetivo:
      *
      * - abrir cofre
-     * - recoger/lootear
+     * - loot
      * - hablar con NPC
      * - aceptar misión
      * - completar misión
      * - activar objeto
-     * - interactuar con objeto utilizable
-     *
-     * El cliente solamente envía la tecla G.
+     * - utilizar objeto interactuable
      */
     private static final String INTERACT_KEY = "G";
 
@@ -126,8 +129,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         mainContainer = new FrameLayout(this);
 
         /*
-         * Importante:
-         * permite dividir eventos multitáctiles entre controles.
+         * Permite dividir eventos multitáctiles entre diferentes
+         * controles hijos.
          */
         mainContainer.setMotionEventSplittingEnabled(true);
 
@@ -138,7 +141,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         setContentView(mainContainer);
 
         // ========================================================
-        // SUPERFICIE DE VIDEO
+        // SUPERFICIE DE STREAMING
         // ========================================================
 
         surfaceView = new SurfaceView(this);
@@ -164,7 +167,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         setupNativeGameControls();
 
         // ========================================================
-        // STREAM
+        // CONEXIÓN
         // ========================================================
 
         isRunning = true;
@@ -176,13 +179,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // ============================================================
-    // CONFIGURACIÓN CONTROLES
+    // CONFIGURACIÓN DE CONTROLES
     // ============================================================
 
     private void setupNativeGameControls() {
 
         // --------------------------------------------------------
-        // D-PAD / JOYSTICK
+        // D-PAD
         // --------------------------------------------------------
 
         dPadView = new DPadView(this);
@@ -203,10 +206,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         );
 
         // --------------------------------------------------------
-        // BOTONES DE HABILIDADES
+        // HABILIDADES
         // --------------------------------------------------------
 
-        actionButtonsView = new ActionButtonsView(this);
+        actionButtonsView =
+                new ActionButtonsView(this);
 
         FrameLayout.LayoutParams actionParams =
                 new FrameLayout.LayoutParams(
@@ -224,10 +228,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         );
 
         // --------------------------------------------------------
-        // BOTÓN INTERACT
+        // INTERACT
         // --------------------------------------------------------
 
-        interactButtonView = new InteractButtonView(this);
+        interactButtonView =
+                new InteractButtonView(this);
 
         FrameLayout.LayoutParams interactParams =
                 new FrameLayout.LayoutParams(
@@ -236,9 +241,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                         Gravity.BOTTOM | Gravity.RIGHT
                 );
 
-        /*
-         * A la izquierda del grupo de habilidades.
-         */
         interactParams.rightMargin = dp(218);
         interactParams.bottomMargin = dp(40);
 
@@ -251,7 +253,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         // L1 / R1
         // --------------------------------------------------------
 
-        triggerButtonsView = new TriggerButtonsView(this);
+        triggerButtonsView =
+                new TriggerButtonsView(this);
 
         FrameLayout.LayoutParams triggerParams =
                 new FrameLayout.LayoutParams(
@@ -265,10 +268,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         );
 
         // --------------------------------------------------------
-        // MENÚ RADIAL
+        // RADIAL
         // --------------------------------------------------------
 
-        dualRadialMenu = new DualRadialMenuView(this);
+        dualRadialMenu =
+                new DualRadialMenuView(this);
 
         FrameLayout.LayoutParams radialParams =
                 new FrameLayout.LayoutParams(
@@ -283,7 +287,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // ============================================================
-    // COMANDOS AL PC
+    // ENVÍO DE COMANDOS
     // ============================================================
 
     public synchronized void sendStroke(
@@ -316,7 +320,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // ============================================================
-    // MOD L1
+    // L1
     // ============================================================
 
     public void setModL1(boolean active) {
@@ -333,7 +337,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // ============================================================
-    // MOD R1
+    // R1
     // ============================================================
 
     public void setModR1(boolean active) {
@@ -358,7 +362,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     }
 
     // ============================================================
-    // CONEXIÓN + STREAMING
+    // STREAMING
     // ============================================================
 
     private void connectAndStream() {
@@ -370,28 +374,36 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     PC_PORT
             );
 
-            videoStream = socket.getInputStream();
-            commandStream = socket.getOutputStream();
+            videoStream =
+                    socket.getInputStream();
 
-            byte[] sizeBuffer = new byte[4];
+            commandStream =
+                    socket.getOutputStream();
+
+            byte[] sizeBuffer =
+                    new byte[4];
 
             while (isRunning) {
 
-                int bytesRead = readFully(
-                        videoStream,
-                        sizeBuffer,
-                        0,
-                        4
-                );
+                int bytesRead =
+                        readFully(
+                                videoStream,
+                                sizeBuffer,
+                                0,
+                                4
+                        );
 
                 if (bytesRead != 4) {
                     break;
                 }
 
-                int size = ByteBuffer
-                        .wrap(sizeBuffer)
-                        .order(ByteOrder.LITTLE_ENDIAN)
-                        .getInt();
+                int size =
+                        ByteBuffer
+                                .wrap(sizeBuffer)
+                                .order(
+                                        ByteOrder.LITTLE_ENDIAN
+                                )
+                                .getInt();
 
                 if (size <= 0 ||
                         size > 50 * 1024 * 1024) {
@@ -402,24 +414,24 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 byte[] imgBuffer =
                         new byte[size];
 
-                int read = readFully(
-                        videoStream,
-                        imgBuffer,
-                        0,
-                        size
-                );
+                int read =
+                        readFully(
+                                videoStream,
+                                imgBuffer,
+                                0,
+                                size
+                        );
 
                 if (read != size) {
                     break;
                 }
 
-                final android.graphics.Bitmap bmp =
-                        android.graphics.BitmapFactory
-                                .decodeByteArray(
-                                        imgBuffer,
-                                        0,
-                                        imgBuffer.length
-                                );
+                Bitmap bmp =
+                        BitmapFactory.decodeByteArray(
+                                imgBuffer,
+                                0,
+                                imgBuffer.length
+                        );
 
                 if (bmp == null) {
                     continue;
@@ -549,10 +561,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     // DENSIDAD
     // ============================================================
 
-    /*
-     * Para enteros:
-     * tamaños, márgenes, LayoutParams.
-     */
     public int dpi(float value) {
 
         return Math.round(
@@ -563,10 +571,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         );
     }
 
-    /*
-     * Para Paint:
-     * strokeWidth, textSize, etc.
-     */
     public float dpf(float value) {
 
         return value *
@@ -575,9 +579,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                         .density;
     }
 
-    /*
-     * Compatibilidad con código existente.
-     */
     public int dp(float value) {
         return dpi(value);
     }
@@ -621,7 +622,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     // ============================================================
     // ============================================================
-    // D-PAD / JOYSTICK
+    // D-PAD
     // ============================================================
     // ============================================================
 
@@ -629,11 +630,20 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
         private final MainActivity act;
 
-        private final Paint pBase = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pStick = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pCenter = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint pAxis = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint pBase =
+                new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        private final Paint pBorder =
+                new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        private final Paint pStick =
+                new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        private final Paint pCenter =
+                new Paint(Paint.ANTI_ALIAS_FLAG);
+
+        private final Paint pAxis =
+                new Paint(Paint.ANTI_ALIAS_FLAG);
 
         private float centerX;
         private float centerY;
@@ -645,12 +655,12 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         private float stickX;
         private float stickY;
 
-        private boolean touchActive = false;
+        private boolean touchActive;
 
-        private boolean wDown = false;
-        private boolean aDown = false;
-        private boolean sDown = false;
-        private boolean dDown = false;
+        private boolean wDown;
+        private boolean aDown;
+        private boolean sDown;
+        private boolean dDown;
 
         private int pointerId =
                 MotionEvent.INVALID_POINTER_ID;
@@ -666,20 +676,30 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     null
             );
 
-            pBase.setStyle(Paint.Style.FILL);
+            pBase.setStyle(
+                    Paint.Style.FILL
+            );
+
             pBase.setColor(
                     UI_BG_DARK
             );
 
-            pBorder.setStyle(Paint.Style.STROKE);
+            pBorder.setStyle(
+                    Paint.Style.STROKE
+            );
+
             pBorder.setColor(
                     UI_BORDER
             );
+
             pBorder.setStrokeWidth(
                     act.dpf(1.2f)
             );
 
-            pStick.setStyle(Paint.Style.FILL);
+            pStick.setStyle(
+                    Paint.Style.FILL
+            );
+
             pStick.setColor(
                     Color.argb(
                             150,
@@ -689,7 +709,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     )
             );
 
-            pCenter.setStyle(Paint.Style.FILL);
+            pCenter.setStyle(
+                    Paint.Style.FILL
+            );
+
             pCenter.setColor(
                     Color.argb(
                             180,
@@ -699,10 +722,14 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     )
             );
 
-            pAxis.setStyle(Paint.Style.STROKE);
+            pAxis.setStyle(
+                    Paint.Style.STROKE
+            );
+
             pAxis.setStrokeWidth(
                     act.dpf(1.0f)
             );
+
             pAxis.setColor(
                     Color.argb(
                             55,
@@ -744,6 +771,16 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         protected void onDraw(Canvas canvas) {
 
             super.onDraw(canvas);
+
+            pBase.setColor(
+                    UI_BG_DARK
+            );
+
+            pBorder.setColor(
+                    touchActive
+                            ? UI_BORDER_ACTIVE
+                            : UI_BORDER
+            );
 
             canvas.drawCircle(
                     centerX,
@@ -796,23 +833,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     pStick
             );
 
-            Paint stroke = pBorder;
-
-            if (touchActive) {
-                stroke.setColor(
-                        UI_BORDER_ACTIVE
-                );
-            } else {
-                stroke.setColor(
-                        UI_BORDER
-                );
-            }
-
             canvas.drawCircle(
                     stickX,
                     stickY,
                     stickRadius,
-                    stroke
+                    pBorder
             );
         }
 
@@ -847,16 +872,20 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                         return true;
                     }
 
-                    int index =
+                    int movePointerIndex =
                             event.findPointerIndex(
                                     pointerId
                             );
 
-                    if (index >= 0) {
+                    if (movePointerIndex >= 0) {
 
                         updateStick(
-                                event.getX(index),
-                                event.getY(index)
+                                event.getX(
+                                        movePointerIndex
+                                ),
+                                event.getY(
+                                        movePointerIndex
+                                )
                         );
                     }
 
@@ -913,16 +942,20 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     centerY + dy;
 
             boolean newW =
-                    dy < -outerRadius * 0.20f;
+                    dy <
+                            -outerRadius * 0.20f;
 
             boolean newS =
-                    dy > outerRadius * 0.20f;
+                    dy >
+                            outerRadius * 0.20f;
 
             boolean newA =
-                    dx < -outerRadius * 0.20f;
+                    dx <
+                            -outerRadius * 0.20f;
 
             boolean newD =
-                    dx > outerRadius * 0.20f;
+                    dx >
+                            outerRadius * 0.20f;
 
             setKey(
                     "W",
@@ -963,6 +996,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         ) {
 
             if (now != old) {
+
                 act.sendStroke(
                         key,
                         now
@@ -1016,7 +1050,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     // ============================================================
     // ============================================================
-    // BOTONES DE HABILIDADES
+    // ACTION BUTTONS
     // ============================================================
     // ============================================================
 
@@ -1031,9 +1065,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 new Paint(Paint.ANTI_ALIAS_FLAG);
 
         private final Paint pText =
-                new Paint(Paint.ANTI_ALIAS_FLAG);
-
-        private final Paint pGlow =
                 new Paint(Paint.ANTI_ALIAS_FLAG);
 
         private final float[][] positions =
@@ -1059,10 +1090,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     Paint.Style.FILL
             );
 
-            pBase.setColor(
-                    UI_BG_DARK
-            );
-
             pBorder.setStyle(
                     Paint.Style.STROKE
             );
@@ -1085,10 +1112,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             pText.setTextSize(
                     act.dpf(14f)
             );
-
-            pGlow.setStyle(
-                    Paint.Style.FILL
-            );
         }
 
         @Override
@@ -1108,36 +1131,17 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                             height
                     ) * 0.28f;
 
-            /*
-             * 1 = arriba
-             * 2 = izquierda
-             * 3 = derecha
-             * 4 = abajo
-             */
+            positions[0][0] = cx;
+            positions[0][1] = cy - spread;
 
-            positions[0][0] =
-                    cx;
+            positions[1][0] = cx - spread;
+            positions[1][1] = cy;
 
-            positions[0][1] =
-                    cy - spread;
+            positions[2][0] = cx + spread;
+            positions[2][1] = cy;
 
-            positions[1][0] =
-                    cx - spread;
-
-            positions[1][1] =
-                    cy;
-
-            positions[2][0] =
-                    cx + spread;
-
-            positions[2][1] =
-                    cy;
-
-            positions[3][0] =
-                    cx;
-
-            positions[3][1] =
-                    cy + spread;
+            positions[3][0] = cx;
+            positions[3][1] = cy + spread;
         }
 
         @Override
@@ -1180,10 +1184,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 };
             }
 
-            for (int i = 0; i < 4; i++) {
+            for (int buttonIndex = 0;
+                 buttonIndex < 4;
+                 buttonIndex++) {
 
                 boolean active =
-                        i == activeButton;
+                        buttonIndex ==
+                                activeButton;
 
                 pBase.setColor(
                         active
@@ -1198,10 +1205,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 );
 
                 float x =
-                        positions[i][0];
+                        positions[buttonIndex][0];
 
                 float y =
-                        positions[i][1];
+                        positions[buttonIndex][1];
 
                 canvas.drawCircle(
                         x,
@@ -1223,26 +1230,24 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                                 : UI_TEXT
                 );
 
-                Paint.FontMetrics fm =
+                Paint.FontMetrics metrics =
                         pText.getFontMetrics();
 
                 float textY =
                         y -
-                                (fm.ascent +
-                                        fm.descent)
-                                        / 2f;
+                                (
+                                        metrics.ascent +
+                                                metrics.descent
+                                ) / 2f;
 
                 canvas.drawText(
-                        labels[i],
+                        labels[buttonIndex],
                         x,
                         textY,
                         pText
                 );
             }
 
-            /*
-             * Indicador de modificador.
-             */
             if (act.isModL1() ||
                     act.isModR1()) {
 
@@ -1280,18 +1285,23 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             float radius =
                     act.dpf(35f);
 
-            for (int i = 0; i < 4; i++) {
+            for (int buttonIndex = 0;
+                 buttonIndex < 4;
+                 buttonIndex++) {
 
                 float dx =
-                        x - positions[i][0];
+                        x -
+                                positions[buttonIndex][0];
 
                 float dy =
-                        y - positions[i][1];
+                        y -
+                                positions[buttonIndex][1];
 
-                if (dx * dx + dy * dy <=
+                if (dx * dx +
+                        dy * dy <=
                         radius * radius) {
 
-                    return i;
+                    return buttonIndex;
                 }
             }
 
@@ -1339,19 +1349,23 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                         return true;
                     }
 
-                    int index =
+                    int movePointerIndex =
                             event.findPointerIndex(
                                     pointerId
                             );
 
-                    if (index < 0) {
+                    if (movePointerIndex < 0) {
                         return true;
                     }
 
                     int newButton =
                             buttonAt(
-                                    event.getX(index),
-                                    event.getY(index)
+                                    event.getX(
+                                            movePointerIndex
+                                    ),
+                                    event.getY(
+                                            movePointerIndex
+                                    )
                             );
 
                     if (newButton !=
@@ -1394,42 +1408,42 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
 
         private void pressButton(
-                int index
+                int buttonIndex
         ) {
 
-            if (index < 0 ||
-                    index > 3) {
+            if (buttonIndex < 0 ||
+                    buttonIndex > 3) {
                 return;
             }
 
             act.sendStroke(
-                    getMapKey(index),
+                    getMapKey(buttonIndex),
                     true
             );
         }
 
         private void releaseButton(
-                int index
+                int buttonIndex
         ) {
 
-            if (index < 0 ||
-                    index > 3) {
+            if (buttonIndex < 0 ||
+                    buttonIndex > 3) {
                 return;
             }
 
             act.sendStroke(
-                    getMapKey(index),
+                    getMapKey(buttonIndex),
                     false
             );
         }
 
         private String getMapKey(
-                int index
+                int buttonIndex
         ) {
 
             if (act.isModL1()) {
 
-                switch (index) {
+                switch (buttonIndex) {
 
                     case 0:
                         return "5";
@@ -1447,7 +1461,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
             if (act.isModR1()) {
 
-                switch (index) {
+                switch (buttonIndex) {
 
                     case 0:
                         return "9";
@@ -1463,7 +1477,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 }
             }
 
-            switch (index) {
+            switch (buttonIndex) {
 
                 case 0:
                     return "1";
@@ -1482,11 +1496,12 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
     // ============================================================
     // ============================================================
-    // BOTÓN INTERACT
+    // INTERACT
     // ============================================================
     // ============================================================
 
-    private static class InteractButtonView extends View {
+    private static class InteractButtonView
+            extends View {
 
         private final MainActivity act;
 
@@ -1543,10 +1558,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
             super.onDraw(canvas);
 
-            float cx =
+            float centerX =
                     getWidth() / 2f;
 
-            float cy =
+            float centerY =
                     getHeight() / 2f;
 
             float radius =
@@ -1568,15 +1583,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             );
 
             canvas.drawCircle(
-                    cx,
-                    cy,
+                    centerX,
+                    centerY,
                     radius,
                     pBase
             );
 
             canvas.drawCircle(
-                    cx,
-                    cy,
+                    centerX,
+                    centerY,
                     radius,
                     pBorder
             );
@@ -1591,19 +1606,20 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     act.dpf(19f)
             );
 
-            Paint.FontMetrics fm =
+            Paint.FontMetrics keyMetrics =
                     pText.getFontMetrics();
 
             float keyY =
-                    cy -
-                            (fm.ascent +
-                                    fm.descent) /
-                                    2f -
+                    centerY -
+                            (
+                                    keyMetrics.ascent +
+                                            keyMetrics.descent
+                            ) / 2f -
                             act.dpf(5f);
 
             canvas.drawText(
                     INTERACT_KEY,
-                    cx,
+                    centerX,
                     keyY,
                     pText
             );
@@ -1614,8 +1630,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
             canvas.drawText(
                     "INTERACT",
-                    cx,
-                    cy + act.dpf(18f),
+                    centerX,
+                    centerY + act.dpf(18f),
                     pText
             );
         }
@@ -1679,7 +1695,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     // ============================================================
     // ============================================================
 
-    private static class TriggerButtonsView extends View {
+    private static class TriggerButtonsView
+            extends View {
 
         private final MainActivity act;
 
@@ -1747,10 +1764,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 int oldHeight
         ) {
 
-            float w =
+            float buttonWidth =
                     act.dpf(74f);
 
-            float h =
+            float buttonHeight =
                     act.dpf(36f);
 
             float margin =
@@ -1762,15 +1779,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             l1Rect.set(
                     margin,
                     top,
-                    margin + w,
-                    top + h
+                    margin + buttonWidth,
+                    top + buttonHeight
             );
 
             r1Rect.set(
-                    width - margin - w,
+                    width - margin - buttonWidth,
                     top,
                     width - margin,
-                    top + h
+                    top + buttonHeight
             );
         }
 
@@ -1839,17 +1856,20 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     act.dpf(11f)
             );
 
-            float y =
+            Paint.FontMetrics metrics =
+                    pText.getFontMetrics();
+
+            float textY =
                     rect.centerY() -
                             (
-                                    pText.getFontMetrics().ascent +
-                                            pText.getFontMetrics().descent
+                                    metrics.ascent +
+                                            metrics.descent
                             ) / 2f;
 
             canvas.drawText(
                     text,
                     rect.centerX(),
-                    y,
+                    textY,
                     pText
             );
         }
@@ -1869,42 +1889,27 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
                 case MotionEvent.ACTION_DOWN: {
 
-                    int id =
+                    int pointer =
                             event.getPointerId(0);
 
-                    boolean handled =
-                            capturePointer(
-                                    id,
-                                    event.getX(0),
-                                    event.getY(0)
-                            );
-
-                    /*
-                     * Si la pulsación no fue sobre L1/R1,
-                     * NO capturamos el evento.
-                     *
-                     * Esto evita bloquear D-pad/skills.
-                     */
-                    return handled;
+                    return capturePointer(
+                            pointer,
+                            event.getX(0),
+                            event.getY(0)
+                    );
                 }
 
                 case MotionEvent.ACTION_POINTER_DOWN: {
 
-                    int id =
+                    int pointer =
                             event.getPointerId(
                                     actionIndex
                             );
 
-                    float x =
-                            event.getX(actionIndex);
-
-                    float y =
-                            event.getY(actionIndex);
-
                     capturePointer(
-                            id,
-                            x,
-                            y
+                            pointer,
+                            event.getX(actionIndex),
+                            event.getY(actionIndex)
                     );
 
                     return true;
@@ -1913,29 +1918,34 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 case MotionEvent.ACTION_MOVE:
 
                     /*
-                     * Sólo actualizamos los punteros
-                     * que pertenecen a L1/R1.
+                     * Los modificadores no dependen de la posición
+                     * después de ser presionados.
+                     *
+                     * Esto permite:
+                     *
+                     * dedo 1 -> L1
+                     * dedo 2 -> habilidad
                      */
                     return true;
 
                 case MotionEvent.ACTION_POINTER_UP: {
 
-                    int id =
+                    int pointer =
                             event.getPointerId(
                                     actionIndex
                             );
 
-                    releasePointer(id);
+                    releasePointer(pointer);
 
                     return true;
                 }
 
                 case MotionEvent.ACTION_UP: {
 
-                    int id =
+                    int pointer =
                             event.getPointerId(0);
 
-                    releasePointer(id);
+                    releasePointer(pointer);
 
                     return true;
                 }
@@ -1951,7 +1961,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
 
         private boolean capturePointer(
-                int id,
+                int pointer,
                 float x,
                 float y
         ) {
@@ -1960,7 +1970,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     l1PointerId ==
                             MotionEvent.INVALID_POINTER_ID) {
 
-                l1PointerId = id;
+                l1PointerId =
+                        pointer;
 
                 act.setModL1(true);
 
@@ -1973,7 +1984,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     r1PointerId ==
                             MotionEvent.INVALID_POINTER_ID) {
 
-                r1PointerId = id;
+                r1PointerId =
+                        pointer;
 
                 act.setModR1(true);
 
@@ -1986,10 +1998,11 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         }
 
         private void releasePointer(
-                int id
+                int pointer
         ) {
 
-            if (id == l1PointerId) {
+            if (pointer ==
+                    l1PointerId) {
 
                 l1PointerId =
                         MotionEvent.INVALID_POINTER_ID;
@@ -1997,7 +2010,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 act.setModL1(false);
             }
 
-            if (id == r1PointerId) {
+            if (pointer ==
+                    r1PointerId) {
 
                 r1PointerId =
                         MotionEvent.INVALID_POINTER_ID;
@@ -2029,7 +2043,8 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
     // ============================================================
     // ============================================================
 
-    private static class DualRadialMenuView extends View {
+    private static class DualRadialMenuView
+            extends View {
 
         private final MainActivity act;
 
@@ -2143,10 +2158,6 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             float buttonRadius =
                     act.dpf(24f);
 
-            /*
-             * Se calcula el radio máximo disponible
-             * para que ningún botón salga de la pantalla.
-             */
             float maxLeft =
                     centerX -
                             buttonRadius -
@@ -2195,56 +2206,59 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                             ? upperLabels
                             : lowerLabels;
 
-            int count =
+            int optionCount =
                     labels.length;
 
             float step =
-                    360f / count;
+                    360f /
+                            optionCount;
 
-            for (int i = 0; i < count; i++) {
+            for (int optionIndex = 0;
+                 optionIndex < optionCount;
+                 optionIndex++) {
 
                 double angle =
                         Math.toRadians(
                                 -90f +
-                                        i * step
+                                        optionIndex *
+                                                step
                         );
 
-                float x =
+                float optionX =
                         centerX +
                                 (float)
                                         Math.cos(angle)
                                         * menuRadius;
 
-                float y =
+                float optionY =
                         centerY +
                                 (float)
                                         Math.sin(angle)
                                         * menuRadius;
 
-                /*
-                 * Segundo seguro por si el dispositivo
-                 * tiene una pantalla especialmente pequeña.
-                 */
-                x = clamp(
-                        x,
-                        buttonRadius +
-                                act.dpf(6f),
-                        getWidth() -
-                                buttonRadius -
-                                act.dpf(6f)
-                );
+                optionX =
+                        clamp(
+                                optionX,
+                                buttonRadius +
+                                        act.dpf(6f),
+                                getWidth() -
+                                        buttonRadius -
+                                        act.dpf(6f)
+                        );
 
-                y = clamp(
-                        y,
-                        buttonRadius +
-                                act.dpf(6f),
-                        getHeight() -
-                                buttonRadius -
-                                act.dpf(6f)
-                );
+                optionY =
+                        clamp(
+                                optionY,
+                                buttonRadius +
+                                        act.dpf(6f),
+                                getHeight() -
+                                        buttonRadius -
+                                        act.dpf(6f)
+                        );
 
                 boolean selected =
-                        i == selectedIdx;
+                        optionIndex ==
+                                selectedIdx;
 
                 pBase.setColor(
                         selected
@@ -2259,15 +2273,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 );
 
                 canvas.drawCircle(
-                        x,
-                        y,
+                        optionX,
+                        optionY,
                         buttonRadius,
                         pBase
                 );
 
                 canvas.drawCircle(
-                        x,
-                        y,
+                        optionX,
+                        optionY,
                         buttonRadius,
                         pBorder
                 );
@@ -2282,24 +2296,24 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                         act.dpf(12f)
                 );
 
+                Paint.FontMetrics metrics =
+                        pText.getFontMetrics();
+
                 float textY =
-                        y -
+                        optionY -
                                 (
-                                        pText.getFontMetrics().ascent +
-                                                pText.getFontMetrics().descent
+                                        metrics.ascent +
+                                                metrics.descent
                                 ) / 2f;
 
                 canvas.drawText(
-                        labels[i],
-                        x,
+                        labels[optionIndex],
+                        optionX,
                         textY,
                         pText
                 );
             }
 
-            /*
-             * Centro.
-             */
             pSelected.setColor(
                     Color.argb(
                             125,
@@ -2347,6 +2361,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             );
         }
 
+        // ========================================================
+        // TOUCH RADIAL
+        // ========================================================
+
         @Override
         public boolean onTouchEvent(
                 MotionEvent event
@@ -2354,6 +2372,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
             int action =
                     event.getActionMasked();
+
+            // ----------------------------------------------------
+            // ABRIR RADIAL
+            // ----------------------------------------------------
 
             if (!activo) {
 
@@ -2363,22 +2385,19 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     return false;
                 }
 
-                float x =
+                float touchX =
                         event.getX();
 
-                float y =
+                float touchY =
                         event.getY();
 
                 /*
-                 * El radial sólo puede activarse
-                 * en la zona central.
-                 *
-                 * Esto evita que bloquee los controles
-                 * de las esquinas.
+                 * Sólo la zona central puede iniciar
+                 * el radial.
                  */
                 if (!isRadialActivationZone(
-                        x,
-                        y
+                        touchX,
+                        touchY
                 )) {
 
                     return false;
@@ -2387,20 +2406,22 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 pointerId =
                         event.getPointerId(0);
 
-                startX = x;
-                startY = y;
+                startX = touchX;
+                startY = touchY;
 
-                centerX = x;
-                centerY = y;
+                centerX = touchX;
+                centerY = touchY;
 
                 /*
-                 * Menú inferior / superior según
-                 * la mitad de la pantalla.
+                 * Superior/inferior.
                  */
                 menuSuperior =
-                        y <
+                        touchY <
                                 getHeight() / 2f;
 
+                /*
+                 * Centro inicial seguro.
+                 */
                 centerX =
                         clamp(
                                 centerX,
@@ -2418,6 +2439,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                         );
 
                 activo = true;
+
                 selectedIdx = -1;
 
                 invalidate();
@@ -2425,45 +2447,72 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                 return true;
             }
 
+            // ----------------------------------------------------
+            // RADIAL ACTIVO
+            // ----------------------------------------------------
+
             switch (action) {
 
-                case MotionEvent.ACTION_MOVE:
+                case MotionEvent.ACTION_MOVE: {
 
                     if (pointerId ==
                             MotionEvent.INVALID_POINTER_ID) {
+
                         return true;
                     }
 
-                    int index =
+                    /*
+                     * IMPORTANTE:
+                     * usamos movePointerIndex y NO "index".
+                     *
+                     * Esto evita la colisión de variables
+                     * que producía el error de compilación.
+                     */
+                    int movePointerIndex =
                             event.findPointerIndex(
                                     pointerId
                             );
 
-                    if (index >= 0) {
+                    if (movePointerIndex >= 0) {
 
                         updateSelection(
-                                event.getX(index),
-                                event.getY(index)
+                                event.getX(
+                                        movePointerIndex
+                                ),
+                                event.getY(
+                                        movePointerIndex
+                                )
                         );
                     }
 
                     return true;
+                }
 
-                case MotionEvent.ACTION_UP:
+                case MotionEvent.ACTION_UP: {
 
                     if (pointerId !=
                             MotionEvent.INVALID_POINTER_ID) {
 
-                        int index =
+                        /*
+                         * IMPORTANTE:
+                         * usamos upPointerIndex.
+                         *
+                         * No se vuelve a declarar "index".
+                         */
+                        int upPointerIndex =
                                 event.findPointerIndex(
                                         pointerId
                                 );
 
-                        if (index >= 0) {
+                        if (upPointerIndex >= 0) {
 
                             updateSelection(
-                                    event.getX(index),
-                                    event.getY(index)
+                                    event.getX(
+                                            upPointerIndex
+                                    ),
+                                    event.getY(
+                                            upPointerIndex
+                                    )
                             );
                         }
                     }
@@ -2473,16 +2522,22 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     closeMenu();
 
                     return true;
+                }
 
-                case MotionEvent.ACTION_CANCEL:
+                case MotionEvent.ACTION_CANCEL: {
 
                     closeMenu();
 
                     return true;
+                }
             }
 
             return true;
         }
+
+        // ========================================================
+        // ZONA DE ACTIVACIÓN
+        // ========================================================
 
         private boolean isRadialActivationZone(
                 float x,
@@ -2490,9 +2545,13 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
         ) {
 
             /*
-             * Evita las zonas de controles principales.
+             * Mantiene libres las esquinas:
+             *
+             * izquierda  -> D-pad
+             * derecha    -> habilidades
+             * arriba     -> L1/R1
+             * abajo      -> controles
              */
-
             float leftSafe =
                     act.dpf(185f);
 
@@ -2512,6 +2571,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     y > topSafe &&
                     y < bottomSafe;
         }
+
+        // ========================================================
+        // SELECCIÓN
+        // ========================================================
 
         private void updateSelection(
                 float x,
@@ -2572,6 +2635,10 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
             invalidate();
         }
 
+        // ========================================================
+        // EJECUTAR
+        // ========================================================
+
         private void executeSelected() {
 
             if (selectedIdx < 0) {
@@ -2585,6 +2652,7 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
 
             if (selectedIdx >=
                     keys.length) {
+
                 return;
             }
 
@@ -2596,23 +2664,21 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback {
                     true
             );
 
-            handlerPostRelease(
-                    key
-            );
-        }
-
-        private void handlerPostRelease(
-                final String key
-        ) {
+            final String releaseKey =
+                    key;
 
             act.handler.postDelayed(
                     () -> act.sendStroke(
-                            key,
+                            releaseKey,
                             false
                     ),
                     35
             );
         }
+
+        // ========================================================
+        // CERRAR
+        // ========================================================
 
         private void closeMenu() {
 
