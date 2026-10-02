@@ -9,7 +9,7 @@ on:
 
 jobs:
   # ============================================================
-  # COMPILACIÓN DEL SERVIDOR PC (C# / .NET 8)
+  # COMPILACIÓN DEL SERVIDOR PC (C# / MSBUILD WINDOWS)
   # ============================================================
   compilar-pc:
     name: Compilar Servidor PC
@@ -19,16 +19,19 @@ jobs:
     - name: Descargar código fuente
       uses: actions/checkout@v4
 
+    - name: Configurar MSBuild (Herramientas Visual Studio)
+      uses: microsoft/setup-msbuild@v2
+
     - name: Configurar entorno .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
 
     - name: Restaurar dependencias de NuGet
-      run: dotnet restore WoWStreamServer.sln
+      run: msbuild WoWStreamServer.sln -t:Restore -p:Configuration=Release
 
-    - name: Compilar servidor en modo Release
-      run: dotnet build WoWStreamServer.sln --configuration Release --no-restore
+    - name: Compilar servidor con MSBuild
+      run: msbuild WoWStreamServer.sln -p:Configuration=Release
 
     - name: Subir ejecutable compilado (Artifact)
       uses: actions/upload-artifact@v4
@@ -37,7 +40,7 @@ jobs:
         path: src/bin/Release/net8.0-windows*/
 
   # ============================================================
-  # COMPILACIÓN Y FIRMADO DE LA APP ANDROID (RELEASE)
+  # COMPILACIÓN Y FIRMADO DE LA APP ANDROID (CON GRADLE GLOBAL)
   # ============================================================
   compilar-android:
     name: Compilar y Firmar App Android
@@ -52,24 +55,24 @@ jobs:
       with:
         distribution: 'zulu'
         java-version: '17'
-        cache: 'gradle'
 
-    # CORRECCIÓN: Se ajusta el directorio de trabajo a la carpeta 'mobile'
-    - name: Otorgar permisos de ejecución a Gradle
-      run: chmod +x gradlew
-      working-directory: ./mobile
+    # Instala el entorno completo de Gradle en el servidor de GitHub Actions
+    - name: Configurar Gradle Global
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: 8.5
 
-    # CORRECCIÓN: Compila apuntando a la estructura interna de 'mobile'
+    # Lanza la compilación de producción apuntando a tu módulo móvil
     - name: Compilar APK en modo Release (Sin firmar)
-      run: ./gradlew assembleRelease
+      run: gradle :app:assembleRelease --no-daemon
       working-directory: ./mobile
 
-    # Genera el almacén de llaves dentro de la carpeta del proyecto Android
+    # Genera las llaves criptográficas de producción válidas por 30 años en caliente
     - name: Autogenerar Keystore de firma sobre la marcha
       run: |
         keytool -genkeypair \
           -v \
-          -keystore mobile/release.keystore \
+          -keystore release.keystore \
           -alias wowalias \
           -keyalg RSA \
           -keysize 2048 \
@@ -77,8 +80,9 @@ jobs:
           -storepass temporalwow123 \
           -keypass temporalwow123 \
           -dname "CN=WowMobile, OU=Desarrollo, O=WowClient, L=Local, S=Local, C=ES"
+      working-directory: ./mobile
 
-    # Busca y firma el archivo APK generado dentro del subdirectorio 'mobile'
+    # Inyecta los certificados dentro del binario para que Android lo reconozca
     - name: Firmar APK con apksigner de Android
       run: |
         BUILD_TOOLS_DIR=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
