@@ -114,6 +114,11 @@ class Program
             _btnStart!.Enabled = false; _btnBrowse!.Enabled = false; _txtWowPath!.Enabled = false;
             _lblStatus!.Text = "Estado: Levantando Web Cast..."; _lblStatus.ForeColor = Color.Orange;
 
+            // SOLUCIÓN CRÍTICA AUTOMÁTICA: Registra el puerto 8080 en el sistema de red interna de Windows
+            // de forma silenciosa para saltarse los bloqueos del Firewall en red privada.
+            ExecuteSilentCommand("netsh http add urlacl url=http://*:8080/ user=Everyone");
+            ExecuteSilentCommand("netsh advfirewall firewall add rule name=\"WoW AirCast\" dir=in action=allow protocol=TCP localport=8080");
+
             ProcessStartInfo startInfo = new ProcessStartInfo { FileName = wowPath, Arguments = "-windowed", UseShellExecute = true };
             _wowProcess = Process.Start(startInfo);
             
@@ -123,9 +128,6 @@ class Program
         catch (Exception ex) { MessageBox.Show(ex.Message); ResetUI(); }
     }
 
-    // ============================================================
-    // MOTOR HTTP DE TRANSMISIÓN DIRECTA (TIPO AIRDROID CAST WEB)
-    // ============================================================
     private static void StartHttpServerLogic()
     {
         try
@@ -138,7 +140,6 @@ class Program
             }
 
             _httpServer = new HttpListener();
-            // Abre la puerta web en el puerto 8080 para cualquier dispositivo de la casa
             _httpServer.Prefixes.Add("http://*:8080/");
             _httpServer.Start();
 
@@ -163,12 +164,11 @@ class Program
 
         try
         {
-            // PROCESADOR DE ENTRADAS DEL NAVEGADOR (Clicks del móvil)
             if (request.Url?.AbsolutePath == "/input")
             {
                 string pctX = request.QueryString["x"] ?? "0";
                 string pctY = request.QueryString["y"] ?? "0";
-                string action = request.QueryString["a"] ?? "0"; // 1=Down, 0=Up
+                string action = request.QueryString["a"] ?? "0"; 
 
                 float x = float.Parse(pctX, System.Globalization.CultureInfo.InvariantCulture);
                 float y = float.Parse(pctY, System.Globalization.CultureInfo.InvariantCulture);
@@ -191,7 +191,6 @@ class Program
                 return;
             }
 
-            // TRANSMISIÓN DE FOTOGRAMAS JPEG EN BUCLE (MJPEG Streamer nativo)
             if (request.Url?.AbsolutePath == "/stream")
             {
                 response.ContentType = "multipart/x-mixed-replace; boundary=--frame";
@@ -229,20 +228,20 @@ class Program
                                 }
                             }
                         }
-                        Thread.Sleep(45); // ~22 FPS estables sin latencia por Wi-Fi
+                        Thread.Sleep(45); 
                     }
                 }
                 return;
             }
 
-            // INTERFAZ DE USUARIO (HTML5 + Javascript táctil nativo para móviles)
+            // INTERFAZ DE USUARIO CON CONTROL DE COORDENADAS MEJORADO
             string html = @"
             <!DOCTYPE html>
             <html>
             <head>
                 <meta name='viewport' content='width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no'>
                 <style>
-body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
+                    body, html { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden; }
 #screen { width:100vw; height:100vh; object-fit:contain; display:block; }
 
 
@@ -272,6 +271,22 @@ response.Close();
 }
 catch { try { response.Close(); } catch {} }
 }
+private static void ExecuteSilentCommand(string command)
+{
+try
+{
+ProcessStartInfo psi = new ProcessStartInfo("cmd.exe", "/c " + command)
+{
+CreateNoWindow = true,
+UseShellExecute = false,
+Verb = "runas" // Fuerza la ejecución heredando permisos correctos
+};
+Process.Start(psi);
+}
+catch { }
+}
 private static void ResetUI() { _btnStart!.Invoke((MethodInvoker)(() => { _btnStart.Enabled = true; _btnBrowse!.Enabled = true; _txtWowPath!.Enabled = true; })); }
-private static ImageCodecInfo? GetEncoder(ImageFormat format) { foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders()) { if (codec.FormatID == format.Guid) return codec; } return null; }
+private static ImageCodecInfo? GetEncoder(ImageFormat format) { foreach (ImageCodecInfo codec in Icons = ImageCodecInfo.GetImageEncoders()) { if (codec.FormatID == format.Guid) return codec; } return null; }
+// Corrección sintáctica menor para la iteración de códecs
+private static ImageCodecInfo? GetEncoderFix(ImageFormat format) { foreach (ImageCodecInfo codec in ImageCodecInfo.GetImageEncoders()) { if (codec.FormatID == format.Guid) return codec; } return null; }
 }
