@@ -1,16 +1,10 @@
-using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
-using System.IO;
-using System.Net;
-using System.Net.Sockets;
 using System.Runtime.InteropServices;
-using System.Threading;
 
 class Program
 {
-    private static TcpListener? _streamServer;
+    private static System.Net.Sockets.TcpListener? _streamServer;
 
     // ============================================================
     // MÉTODOS NATIVOS WIN32 (USER32.DLL)
@@ -64,13 +58,13 @@ class Program
                 IntPtr wowHandle = wowProcess.MainWindowHandle;
                 Console.WriteLine("[OK] Segunda instancia de WoW ejecutándose de manera aislada.");
 
-                _streamServer = new TcpListener(IPAddress.Any, 8888);
+                _streamServer = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Any, 8888);
                 _streamServer.Start();
                 Console.WriteLine("[OK] Servidor en línea. Esperando conexión de la pantalla móvil...");
 
                 while (true)
                 {
-                    TcpClient client = _streamServer.AcceptTcpClient();
+                    System.Net.Sockets.TcpClient client = _streamServer.AcceptTcpClient();
                     Console.WriteLine("[INFO] Celular conectado para recibir stream e inputs.");
                     
                     ThreadPool.QueueUserWorkItem(state => ProcessAndStreamVideo(client, wowProcess));
@@ -89,9 +83,9 @@ class Program
     // CAPTURA Y STREAMING DE VIDEO
     // ============================================================
 
-    private static void ProcessAndStreamVideo(TcpClient client, Process process)
+    private static void ProcessAndStreamVideo(System.Net.Sockets.TcpClient client, Process process)
     {
-        using NetworkStream stream = client.GetStream();
+        using System.Net.Sockets.NetworkStream stream = client.GetStream();
         while (client.Connected && !process.HasExited)
         {
             try
@@ -131,17 +125,16 @@ class Program
     // GESTIÓN DE CONTROLES ENTRANTES (PROCESADOR HÍBRIDO)
     // ============================================================
 
-    private static void HandleIncomingControls(TcpClient client, IntPtr wowWindowHandle)
+    private static void HandleIncomingControls(System.Net.Sockets.TcpClient client, IntPtr wowWindowHandle)
     {
-        using NetworkStream stream = client.GetStream();
+        using System.Net.Sockets.NetworkStream stream = client.GetStream();
 
         while (client.Connected && wowWindowHandle != IntPtr.Zero)
         {
             try
             {
-                // 1. Leer el primer byte identificador de tipo
                 int typeByte = stream.ReadByte();
-                if (typeByte == -1) break; // Conexión finalizada
+                if (typeByte == -1) break; 
 
                 byte commandType = (byte)typeByte;
 
@@ -154,8 +147,8 @@ class Program
                     int read = ReadExactly(stream, kbBuffer, 2);
                     if (read != 2) break;
 
-                    byte action = kbBuffer[0];  // 1 = Presionado, 0 = Soltado
-                    byte keyChar = kbBuffer[1]; // Carácter o código ASCII
+                    byte action = kbBuffer[0];  
+                    byte keyChar = kbBuffer[1]; 
 
                     uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
                     PostMessage(wowWindowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
@@ -169,13 +162,11 @@ class Program
                     int read = ReadExactly(stream, mouseBuffer, 9);
                     if (read != 9) break;
 
-                    byte mouseAction = mouseBuffer[0]; // 1 = Click Down, 0 = Click Up
+                    byte mouseAction = mouseBuffer[0]; 
                     
-                    // Extraer los floats de coordenadas normalizadas (0.0 a 1.0)
                     float pctX = BitConverter.ToSingle(mouseBuffer, 1);
                     float pctY = BitConverter.ToSingle(mouseBuffer, 5);
 
-                    // Obtener dimensiones de la ventana para mapear las coordenadas
                     if (GetClientRect(wowWindowHandle, out RECT rect))
                     {
                         int width = rect.Right - rect.Left;
@@ -184,13 +175,12 @@ class Program
                         int localX = (int)(pctX * width);
                         int localY = (int)(pctY * height);
 
-                        // Estructura LPARAM para Win32: Y en la parte alta (High Word), X en la baja (Low Word)
                         IntPtr lParam = (IntPtr)((localY << 16) | (localX & 0xFFFF));
                         uint mouseMsg;
 
                         // EVALUACIÓN DE ZONA: 
-                        // Si tocas abajo del 70% de la pantalla (pctY > 0.70f), es la interfaz/barras -> Clic Izquierdo.
-                        // Si tocas arriba del 70% de la pantalla (pctY <= 0.70f), es el mundo 3D -> Clic Derecho.
+                        // Si pisa abajo del 70% de la pantalla (pctY > 0.70f), es interfaz -> Clic Izquierdo.
+                        // Si pisa arriba, es el mundo 3D -> Clic Derecho.
                         if (pctY > 0.70f)
                         {
                             mouseMsg = (mouseAction == 1) ? WM_LBUTTONDOWN : WM_LBUTTONUP;
@@ -212,7 +202,7 @@ class Program
     // UTILIDADES DE RED Y CÓDECS
     // ============================================================
 
-    private static int ReadExactly(NetworkStream stream, byte[] buffer, int count)
+    private static int ReadExactly(System.Net.Sockets.NetworkStream stream, byte[] buffer, int count)
     {
         int totalRead = 0;
         while (totalRead < count)
