@@ -178,12 +178,11 @@ class Program
             { 
                 FileName = wowPath, 
                 Arguments = "-windowed",
-                UseShellExecute = true // Requerido para heredar permisos de administrador correctamente
+                UseShellExecute = true 
             };
             
             _wowProcess = Process.Start(startInfo);
             
-            // Separamos la lógica de red en un hilo para capturar fallos específicos de red
             Thread serverThread = new Thread(RunServerNetworkLogic) { IsBackground = true };
             serverThread.Start();
         }
@@ -200,15 +199,13 @@ class Program
         {
             if (_wowProcess != null)
             {
-                // Esperar de forma segura a que la ventana se dibuje
                 Thread.Sleep(3000); 
                 _wowProcess.Refresh();
                 _wowHandle = _wowProcess.MainWindowHandle;
                 
-                try { _wowProcess.ProcessorAffinity = (IntPtr)0x30; } catch { /* Ignorar si no permite cambiar afinidad */ }
+                try { _wowProcess.ProcessorAffinity = (IntPtr)0x30; } catch { /* Ignorar si falla */ }
             }
 
-            // Forzar el arranque del socket enlazado a la red local
             _streamServer = new TcpListener(IPAddress.Any, 8888);
             _streamServer.Start();
 
@@ -235,7 +232,6 @@ class Program
         }
         catch (Exception ex)
         {
-            // ESTO NOS DIRÁ EL ERROR REAL (Ej: "Acceso denegado", "Puerto ya en uso", etc.)
             MessageBox.Show($"Error detallado del Servidor de Red:\n\n{ex.Message}\n\nTarget: {ex.StackTrace}", "Fallo de Inicialización", MessageBoxButtons.OK, MessageBoxIcon.Warning);
 
             _mainForm?.Invoke((MethodInvoker)delegate {
@@ -291,14 +287,16 @@ class Program
             {
                 using (Bitmap bmp = new Bitmap(1280, 720))
                 {
-using (Graphics g = Graphics.FromImage(bmp))
-{
-g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
-}
-using (MemoryStream ms = new MemoryStream())
-{
+                    using (Graphics g = Graphics.FromImage(bmp))
+                    {
+                        g.CopyFromScreen(0, 0, 0, 0, bmp.Size);
+                    }
+
+                    using (MemoryStream ms = new MemoryStream())
+                    {
+                        // CORRECCIÓN CS0029: Asignación explícita envolviendo el parámetro en un arreglo válido
 EncoderParameters encoderParams = new EncoderParameters(1);
-encoderParams.Param = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 60L);
+encoderParams.Param = new EncoderParameter[] { new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 60L) };
 ImageCodecInfo? jpegCodec = GetEncoder(ImageFormat.Jpeg);
 if (jpegCodec != null)
 {
@@ -330,20 +328,20 @@ if (typeByte == -1) break;
 byte commandType = (byte)typeByte;
 if (commandType == 0)
 {
-byte[] kbBuffer = new byte[2];
+byte[] kbBuffer = new byte;
 int read = ReadExactly(stream, kbBuffer, 2);
 if (read != 2) break;
-byte action = kbBuffer[0];
-byte keyChar = kbBuffer[1];
+byte action = kbBuffer;
+byte keyChar = kbBuffer;
 uint msg = (action == 1) ? WM_KEYDOWN : WM_KEYUP;
 PostMessage(wowWindowHandle, msg, (IntPtr)keyChar, IntPtr.Zero);
 }
 else if (commandType == 1)
 {
-byte[] mouseBuffer = new byte[9];
+byte[] mouseBuffer = new byte;
 int read = ReadExactly(stream, mouseBuffer, 9);
 if (read != 9) break;
-byte mouseAction = mouseBuffer[0];
+byte mouseAction = mouseBuffer;
 float pctX = BitConverter.ToSingle(mouseBuffer, 1);
 float pctY = BitConverter.ToSingle(mouseBuffer, 5);
 if (GetClientRect(wowWindowHandle, out RECT rect))
