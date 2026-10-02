@@ -340,8 +340,8 @@ class Program
             _vp8Codec = new VP8Codec();
 
             _videoEncoder =
-                new Vp8NetVideoEncoderEndPoint(
-                    _vp8Codec);
+                new Vp8NetVideoEncoderEndPoint();
+                
 
             /*
              * La pista anuncia los formatos VP8 que
