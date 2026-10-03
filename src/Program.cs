@@ -17,81 +17,61 @@ using SIPSorcery.Net;
 using SIPSorceryMedia.Abstractions;
 using Vpx.Net;
 
-namespace WoWStream;
-
 internal static class Program
 {
     // ============================================================
-    // CONFIGURACIÓN
+    // WoWStream
     // ============================================================
 
     private const int SignalingPort = 8080;
 
-    private static readonly string SignalingPrefix =
-        $"http://localhost:{SignalingPort}/";
+    private static readonly string SignalingHost =
+        "127.0.0.1";
 
-    private static readonly HttpListener SignalingServer =
-        new();
+    private static IntPtr _wowHandle = IntPtr.Zero;
+    private static Process? _wowProcess;
+
+    private static RTCPeerConnection? _peerConnection;
+    private static ClientWebSocket? _signalingWebSocket;
+
+    private static VP8Codec? _vp8Codec;
+    private static Vp8NetVideoEncoderEndPoint? _videoEncoder;
+
+    private static bool _isStreaming;
+    private static bool _shuttingDown;
+
+    private static string _roomId = "";
+    private static string _localIp = "127.0.0.1";
+
+    private static HttpListener? _signalingServer;
+    private static CancellationTokenSource? _serverCancellation;
 
     private static readonly ConcurrentDictionary<
         string,
-        ConcurrentDictionary<string, WebSocket>
-    > Rooms = new();
-
-    private static HttpListenerContext? _httpContext;
-
-    // ============================================================
-    // WOW
-    // ============================================================
-
-    private static Process? _wowProcess;
-    private static IntPtr _wowHandle = IntPtr.Zero;
-
-    // ============================================================
-    // WEBRTC
-    // ============================================================
-
-    private static RTCPeerConnection? _peerConnection;
-
-    private static Vp8NetVideoEncoderEndPoint? _videoEncoder;
-    private static VP8Codec? _vp8Codec;
-
-    private static MediaStreamTrack? _videoTrack;
-
-    private static RTCDataChannel? _controlDataChannel;
-
-    private static readonly object PeerLock = new();
-
-    private static bool _answerReceived;
-    private static bool _offerSent;
-    private static bool _streaming;
-
-    // ============================================================
-    // SIGNALING
-    // ============================================================
-
-    private static string _roomId = "";
-    private static string _hostClientId = "host";
+        ConcurrentDictionary<string, WebSocket>>
+        _rooms = new();
 
     // ============================================================
     // UI
     // ============================================================
 
-    private static Form? _form;
-
-    private static TextBox? _wowPathText;
-    private static TextBox? _roomText;
-    private static TextBox? _statusText;
-    private static Button? _startButton;
+    private static Form? _mainForm;
+    private static TextBox? _txtWowPath;
+    private static TextBox? _txtConnectionId;
+    private static Button? _btnBrowse;
+    private static Button? _btnStart;
+    private static Label? _lblStatus;
+    private static Label? _lblRoom;
+    private static Label? _lblServer;
 
     // ============================================================
-    // WIN32
+    // Windows API
     // ============================================================
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(
         IntPtr hWnd,
-        uint msg,
+        uint Msg,
         IntPtr wParam,
         IntPtr lParam);
 
@@ -123,800 +103,933 @@ internal static class Program
     // ============================================================
 
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
-        ApplicationConfiguration.Initialize();
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
 
-        CreateUserInterface();
+        _roomId = GenerateRoomId();
+        _localIp = GetLocalIPv4();
 
-        StartSignalingServer();
+        CreateMainForm();
 
-        Application.Run(_form);
+        Application.ApplicationExit +=
+            (_, _) =>
+            {
+                _ = ShutdownAsync();
+            };
 
-        Shutdown();
+        Application.Run(_mainForm!);
     }
 
     // ============================================================
     // UI
     // ============================================================
 
-    private static void CreateUserInterface()
+    private static void CreateMainForm()
     {
-        _form = new Form
+        _mainForm = new Form
         {
             Text = "WoWStream",
-            Width = 620,
-            Height = 420,
-            StartPosition = FormStartPosition.CenterScreen,
+            Width = 560,
+            Height = 310,
             FormBorderStyle = FormBorderStyle.FixedSingle,
-            MaximizeBox = false
+            MaximizeBox = false,
+            StartPosition = FormStartPosition.CenterScreen,
+            BackColor = Color.FromArgb(20, 24, 30)
         };
 
-        var title = new Label
+        Label lblTitle = new Label
         {
             Text = "WoWStream",
-            AutoSize = true,
+            Left = 20,
+            Top = 12,
+            Width = 500,
+            Height = 30,
+            ForeColor = Color.Cyan,
             Font = new Font(
                 "Segoe UI",
-                20,
-                FontStyle.Bold),
-            Location = new Point(25, 20)
+                16,
+                FontStyle.Bold)
         };
 
-        _form.Controls.Add(title);
-
-        var wowLabel = new Label
+        Label lblPath = new Label
         {
-            Text = "Ruta de WoW.exe:",
-            AutoSize = true,
-            Location = new Point(25, 80)
+            Text = "Ruta de Wow.exe:",
+            Left = 20,
+            Top = 50,
+            Width = 130,
+            ForeColor = Color.White,
+            Font = new Font(
+                "Segoe UI",
+                9,
+                FontStyle.Bold)
         };
 
-        _form.Controls.Add(wowLabel);
-
-        _wowPathText = new TextBox
+        _txtWowPath = new TextBox
         {
-            Location = new Point(25, 105),
-            Width = 450,
-            Text = @"C:\World of Warcraft\Wow.exe"
+            Left = 20,
+            Top = 73,
+            Width = 390,
+            Text =
+                @"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe",
+            BackColor = Color.FromArgb(40, 44, 52),
+            ForeColor = Color.White,
+            BorderStyle = BorderStyle.FixedSingle
         };
 
-        _form.Controls.Add(_wowPathText);
-
-        var browseButton = new Button
+        _btnBrowse = new Button
         {
-            Text = "Examinar",
-            Location = new Point(485, 103),
-            Width = 90
+            Text = "Buscar...",
+            Left = 420,
+            Top = 71,
+            Width = 100,
+            Height = 27,
+            BackColor = Color.FromArgb(60, 65, 75),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat
         };
 
-        browseButton.Click += (_, _) =>
+        _btnBrowse.Click += BtnBrowse_Click;
+
+        Label lblId = new Label
         {
-            using var dialog = new OpenFileDialog
+            Text = "ID de conexión:",
+            Left = 20,
+            Top = 112,
+            Width = 130,
+            ForeColor = Color.White,
+            Font = new Font(
+                "Segoe UI",
+                9,
+                FontStyle.Bold)
+        };
+
+        _txtConnectionId = new TextBox
+        {
+            Left = 20,
+            Top = 135,
+            Width = 230,
+            Text = _roomId,
+            BackColor = Color.FromArgb(40, 44, 52),
+            ForeColor = Color.Cyan,
+            BorderStyle = BorderStyle.FixedSingle,
+            Font = new Font(
+                "Segoe UI",
+                10,
+                FontStyle.Bold)
+        };
+
+        _txtConnectionId.TextChanged +=
+            (_, _) =>
             {
-                Filter = "World of Warcraft|Wow.exe|Executable|*.exe"
+                string value =
+                    _txtConnectionId?.Text.Trim() ?? "";
+
+                if (!string.IsNullOrWhiteSpace(value))
+                {
+                    _roomId = value;
+
+                    if (_lblRoom != null)
+                    {
+                        _lblRoom.Text =
+                            "Sala: " + _roomId;
+                    }
+                }
             };
 
-            if (dialog.ShowDialog() ==
-                DialogResult.OK)
-            {
-                _wowPathText!.Text =
-                    dialog.FileName;
-            }
-        };
-
-        _form.Controls.Add(browseButton);
-
-        var roomLabel = new Label
+        _lblRoom = new Label
         {
-            Text = "ID de sala:",
-            AutoSize = true,
-            Location = new Point(25, 155)
+            Text = "Sala: " + _roomId,
+            Left = 270,
+            Top = 138,
+            Width = 250,
+            ForeColor = Color.LightGreen,
+            Font = new Font(
+                "Segoe UI",
+                9,
+                FontStyle.Bold)
         };
 
-        _form.Controls.Add(roomLabel);
-
-        _roomText = new TextBox
+        _btnStart = new Button
         {
-            Location = new Point(25, 180),
-            Width = 220,
-            Text = GenerateRoomId()
+            Text = "INICIAR WoWStream",
+            Left = 20,
+            Top = 180,
+            Width = 230,
+            Height = 38,
+            BackColor = Color.FromArgb(75, 100, 205),
+            ForeColor = Color.White,
+            FlatStyle = FlatStyle.Flat,
+            Font = new Font(
+                "Segoe UI",
+                10,
+                FontStyle.Bold)
         };
 
-        _form.Controls.Add(_roomText);
+        _btnStart.Click += BtnStart_Click;
 
-        _startButton = new Button
+        _lblStatus = new Label
         {
-            Text = "INICIAR WOWSTREAM",
-            Location = new Point(265, 178),
-            Width = 180,
-            Height = 30
+            Text = "Estado: Detenido.",
+            Left = 270,
+            Top = 190,
+            Width = 250,
+            Height = 25,
+            ForeColor = Color.Gray,
+            Font = new Font(
+                "Segoe UI",
+                9,
+                FontStyle.Bold)
         };
 
-        _startButton.Click += (_, _) =>
-        {
-            StartStreaming();
-        };
-
-        _form.Controls.Add(_startButton);
-
-        var info = new Label
+        _lblServer = new Label
         {
             Text =
-                "Android debe conectarse a:\r\n" +
-                "ws://IP-DE-ESTA-PC:8080/ws\r\n\r\n" +
-                "Puerto de señalización: 8080",
-            AutoSize = true,
-            Location = new Point(25, 235)
+                $"Signaling: ws://{_localIp}:{SignalingPort}/ws",
+            Left = 20,
+            Top = 235,
+            Width = 500,
+            Height = 25,
+            ForeColor = Color.LightSkyBlue,
+            Font = new Font(
+                "Segoe UI",
+                8,
+                FontStyle.Regular)
         };
 
-        _form.Controls.Add(info);
-
-        _statusText = new TextBox
-        {
-            Location = new Point(25, 315),
-            Width = 550,
-            Height = 45,
-            Multiline = true,
-            ReadOnly = true,
-            ScrollBars = ScrollBars.Vertical
-        };
-
-        _form.Controls.Add(_statusText);
-
-        SetStatus(
-            "WoWStream listo. Sala: " +
-            _roomText.Text);
+        _mainForm.Controls.Add(lblTitle);
+        _mainForm.Controls.Add(lblPath);
+        _mainForm.Controls.Add(_txtWowPath);
+        _mainForm.Controls.Add(_btnBrowse);
+        _mainForm.Controls.Add(lblId);
+        _mainForm.Controls.Add(_txtConnectionId);
+        _mainForm.Controls.Add(_lblRoom);
+        _mainForm.Controls.Add(_btnStart);
+        _mainForm.Controls.Add(_lblStatus);
+        _mainForm.Controls.Add(_lblServer);
     }
 
-    private static void SetStatus(
-        string text)
+    private static void BtnBrowse_Click(
+        object? sender,
+        EventArgs e)
     {
-        if (_statusText == null)
-            return;
-
-        void Update()
+        using OpenFileDialog ofd = new OpenFileDialog
         {
-            _statusText.Text =
-                DateTime.Now.ToString("HH:mm:ss") +
-                "  " +
-                text;
+            Filter =
+                "Ejecutable de WoW (*.exe)|*.exe|Todos los archivos (*.*)|*.*"
+        };
+
+        if (ofd.ShowDialog() == DialogResult.OK)
+        {
+            if (_txtWowPath != null)
+            {
+                _txtWowPath.Text = ofd.FileName;
+            }
+        }
+    }
+
+    // ============================================================
+    // START
+    // ============================================================
+
+    private static async void BtnStart_Click(
+        object? sender,
+        EventArgs e)
+    {
+        string wowPath =
+            _txtWowPath?.Text.Trim() ?? "";
+
+        string connectionId =
+            _txtConnectionId?.Text.Trim() ?? "";
+
+        if (!File.Exists(wowPath))
+        {
+            MessageBox.Show(
+                "No se encontró Wow.exe.",
+                "WoWStream",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+
+            return;
         }
 
-        if (_statusText.InvokeRequired)
-            _statusText.BeginInvoke(Update);
-        else
-            Update();
+        if (string.IsNullOrWhiteSpace(connectionId))
+        {
+            MessageBox.Show(
+                "Introduce un ID de conexión.",
+                "WoWStream",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Warning);
+
+            return;
+        }
+
+        _roomId = connectionId;
+        _shuttingDown = false;
+
+        SetUIBusy(true);
+
+        try
+        {
+            SetStatus(
+                "Iniciando servidor de señalización...",
+                Color.Orange);
+
+            await StartSignalingServer();
+
+            SetStatus(
+                "Iniciando World of Warcraft...",
+                Color.Orange);
+
+            ProcessStartInfo startInfo =
+                new ProcessStartInfo
+                {
+                    FileName = wowPath,
+                    Arguments = "-windowed",
+                    UseShellExecute = true,
+                    WorkingDirectory =
+                        Path.GetDirectoryName(wowPath)
+                        ?? Environment.CurrentDirectory
+                };
+
+            _wowProcess =
+                Process.Start(startInfo);
+
+            if (_wowProcess == null)
+            {
+                throw new InvalidOperationException(
+                    "No se pudo iniciar Wow.exe.");
+            }
+
+            await Task.Delay(3000);
+
+            Process? process =
+                _wowProcess;
+
+            if (process != null)
+            {
+                try
+                {
+                    process.Refresh();
+
+                    _wowHandle =
+                        process.MainWindowHandle;
+                }
+                catch
+                {
+                    _wowHandle = IntPtr.Zero;
+                }
+            }
+
+            SetStatus(
+                "Conectando WoWStream al signaling...",
+                Color.Orange);
+
+            await ConnectHostToSignaling();
+
+            SetStatus(
+                "Esperando cliente remoto...",
+                Color.LightGreen);
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine(ex);
+
+            MessageBox.Show(
+                "No se pudo iniciar WoWStream:\r\n\r\n" +
+                ex.Message,
+                "WoWStream",
+                MessageBoxButtons.OK,
+                MessageBoxIcon.Error);
+
+            await ShutdownAsync();
+
+            SetUIBusy(false);
+        }
     }
 
     // ============================================================
     // SIGNALING SERVER
     // ============================================================
 
-    private static void StartSignalingServer()
+    private static async Task StartSignalingServer()
     {
+        if (_signalingServer != null)
+        {
+            return;
+        }
+
+        _serverCancellation =
+            new CancellationTokenSource();
+
+        HttpListener server =
+            new HttpListener();
+
+        server.Prefixes.Add(
+            $"http://+:{SignalingPort}/ws/");
+
+        server.Prefixes.Add(
+            $"http://+:{SignalingPort}/");
+
         try
         {
-            SignalingServer.Prefixes.Add(
-                SignalingPrefix);
+            server.Start();
 
-            SignalingServer.Start();
-
-            SetStatus(
-                $"Servidor de señalización activo en " +
-                $"127.0.0.1:{SignalingPort}");
-
-            _ = Task.Run(
-                SignalingAcceptLoop);
+            _signalingServer =
+                server;
         }
-        catch (Exception ex)
-        {
-            SetStatus(
-                "ERROR iniciando señalización: " +
-                ex.Message);
-        }
-    }
-
-    private static async Task SignalingAcceptLoop()
-    {
-        while (
-            SignalingServer.IsListening)
+        catch
         {
             try
             {
-                var context =
-                    await SignalingServer.GetContextAsync();
-
-                _ = Task.Run(
-                    () => HandleHttpContext(
-                        context));
+                server.Close();
             }
             catch
             {
-                if (!SignalingServer.IsListening)
-                    break;
+            }
+
+            throw new InvalidOperationException(
+                $"No se pudo abrir el puerto {SignalingPort}. " +
+                "Comprueba que ningún otro programa lo esté utilizando " +
+                "y que Windows permita la reserva HTTP.");
+        }
+
+        CancellationToken token =
+            _serverCancellation.Token;
+
+        _ = Task.Run(
+            () => SignalingAcceptLoop(token));
+    }
+
+    private static async Task SignalingAcceptLoop(
+        CancellationToken cancellationToken)
+    {
+        while (!cancellationToken.IsCancellationRequested)
+        {
+            HttpListener? server =
+                _signalingServer;
+
+            if (server == null)
+            {
+                break;
+            }
+
+            try
+            {
+                HttpListenerContext context =
+                    await server.GetContextAsync();
+
+                if (!context.Request.IsWebSocketRequest)
+                {
+                    context.Response.StatusCode = 400;
+
+                    byte[] response =
+                        Encoding.UTF8.GetBytes(
+                            "WoWStream signaling server");
+
+                    await context.Response.OutputStream.WriteAsync(
+                        response,
+                        0,
+                        response.Length);
+
+                    context.Response.Close();
+
+                    continue;
+                }
+
+                string path =
+                    context.Request.Url?.AbsolutePath ?? "";
+
+                if (!path.Equals(
+                        "/ws",
+                        StringComparison.OrdinalIgnoreCase) &&
+                    !path.Equals(
+                        "/ws/",
+                        StringComparison.OrdinalIgnoreCase))
+                {
+                    context.Response.StatusCode = 404;
+                    context.Response.Close();
+                    continue;
+                }
+
+                HttpListenerWebSocketContext wsContext =
+                    await context.AcceptWebSocketAsync(
+                        null);
+
+                WebSocket socket =
+                    wsContext.WebSocket;
+
+                _ = Task.Run(
+                    () => HandleSignalingClient(
+                        socket,
+                        context.Request.QueryString));
+            }
+            catch (HttpListenerException)
+            {
+                break;
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    "SignalingAcceptLoop: " +
+                    ex.Message);
             }
         }
     }
 
-    private static async Task HandleHttpContext(
-        HttpListenerContext context)
+    private static async Task HandleSignalingClient(
+        WebSocket socket,
+        System.Collections.Specialized.NameValueCollection query)
     {
-        try
+        string room =
+            query["room"] ?? "";
+
+        string client =
+            query["client"] ??
+            Guid.NewGuid().ToString("N");
+
+        if (string.IsNullOrWhiteSpace(room))
         {
-            if (!context.Request.IsWebSocketRequest)
+            await SendText(
+                socket,
+                CreateError(
+                    "Falta el parámetro room."));
+
+            await CloseSocket(socket);
+
+            return;
+        }
+
+        ConcurrentDictionary<string, WebSocket> roomSockets =
+            _rooms.GetOrAdd(
+                room,
+                _ =>
+                    new ConcurrentDictionary<
+                        string,
+                        WebSocket>());
+
+        string originalClient =
+            client;
+
+        int suffix =
+            1;
+
+        while (!roomSockets.TryAdd(
+                   client,
+                   socket))
+        {
+            client =
+                originalClient +
+                "-" +
+                suffix++;
+
+            if (suffix > 1000)
             {
-                context.Response.StatusCode = 400;
-                context.Response.Close();
+                await CloseSocket(socket);
                 return;
             }
+        }
 
-            var wsContext =
-                await context.AcceptWebSocketAsync(
-                    null);
+        Debug.WriteLine(
+            $"[SIGNALING] JOIN room={room} client={client}");
 
-            var socket =
-                wsContext.WebSocket;
-
-            var room =
-                context.Request.QueryString["room"];
-
-            var client =
-                context.Request.QueryString["client"];
-
-            if (string.IsNullOrWhiteSpace(room))
-                room = "DEFAULT";
-
-            if (string.IsNullOrWhiteSpace(client))
-                client =
-                    Guid.NewGuid()
-                        .ToString("N");
-
-            var roomSockets =
-                Rooms.GetOrAdd(
-                    room,
-                    _ =>
-                        new ConcurrentDictionary<
-                            string,
-                            WebSocket>());
-
-            roomSockets[client] = socket;
-
-            SetStatus(
-                $"Cliente conectado: {client} / sala {room}");
-
-            await SendJson(
-                socket,
+        await SendText(
+            socket,
+            JsonSerializer.Serialize(
                 new
                 {
                     type = "joined",
                     room,
                     client
-                });
+                }));
 
-            await BroadcastExcept(
-                room,
-                client,
+        await Broadcast(
+            roomSockets,
+            client,
+            JsonSerializer.Serialize(
                 new
                 {
                     type = "peer-joined",
-                    room,
                     client
-                });
+                }));
 
-            await WebSocketReceiveLoop(
-                room,
-                client,
-                socket);
-        }
-        catch (Exception ex)
-        {
-            SetStatus(
-                "WebSocket error: " +
-                ex.Message);
-        }
-    }
-
-    private static async Task WebSocketReceiveLoop(
-        string room,
-        string client,
-        WebSocket socket)
-    {
-        var buffer =
-            new byte[1024 * 256];
+        byte[] buffer =
+            new byte[64 * 1024];
 
         try
         {
-            while (
-                socket.State ==
-                WebSocketState.Open)
+            while (socket.State ==
+                   WebSocketState.Open)
             {
-                using var ms =
-                    new MemoryStream();
+                string? message =
+                    await ReceiveText(
+                        socket,
+                        buffer);
 
-                WebSocketReceiveResult result;
-
-                do
-                {
-                    result =
-                        await socket.ReceiveAsync(
-                            new ArraySegment<byte>(
-                                buffer),
-                            CancellationToken.None);
-
-                    if (result.MessageType ==
-                        WebSocketMessageType.Close)
-                    {
-                        break;
-                    }
-
-                    ms.Write(
-                        buffer,
-                        0,
-                        result.Count);
-
-                } while (!result.EndOfMessage);
-
-                if (result.MessageType ==
-                    WebSocketMessageType.Close)
+                if (message == null)
                 {
                     break;
                 }
 
-                string message =
-                    Encoding.UTF8.GetString(
-                        ms.ToArray());
-
-                await ProcessSignalingMessage(
-                    room,
+                await Broadcast(
+                    roomSockets,
                     client,
                     message);
             }
         }
-        catch
+        catch (Exception ex)
         {
+            Debug.WriteLine(
+                $"[SIGNALING] {ex.Message}");
         }
         finally
         {
-            if (Rooms.TryGetValue(
-                    room,
-                    out var roomSockets))
+            roomSockets.TryRemove(
+                client,
+                out _);
+
+            await Broadcast(
+                roomSockets,
+                client,
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        type = "peer-left",
+                        client
+                    }));
+
+            if (roomSockets.IsEmpty)
             {
-                roomSockets.TryRemove(
-                    client,
+                _rooms.TryRemove(
+                    room,
                     out _);
-
-                if (roomSockets.IsEmpty)
-                {
-                    Rooms.TryRemove(
-                        room,
-                        out _);
-                }
             }
 
-            SetStatus(
-                $"Cliente desconectado: {client}");
+            await CloseSocket(socket);
         }
     }
 
-    private static async Task ProcessSignalingMessage(
-        string room,
-        string sender,
-        string message)
+    // ============================================================
+    // HOST SIGNALING CONNECTION
+    // ============================================================
+
+    private static async Task ConnectHostToSignaling()
     {
-        try
-        {
-            using JsonDocument document =
-                JsonDocument.Parse(message);
+        _signalingWebSocket =
+            new ClientWebSocket();
 
-            var root =
-                document.RootElement;
+        string url =
+            $"ws://{SignalingHost}:{SignalingPort}/ws" +
+            $"?room={Uri.EscapeDataString(_roomId)}" +
+            $"&client=host";
 
-            string type =
-                root.TryGetProperty(
-                    "type",
-                    out var typeElement)
-                    ? typeElement.GetString() ?? ""
-                    : "";
-
-            if (string.Equals(
-                    type,
-                    "answer",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                await HandleAnswer(root);
-
-                await BroadcastExcept(
-                    room,
-                    sender,
-                    message);
-
-                return;
-            }
-
-            if (string.Equals(
-                    type,
-                    "ice-candidate",
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                await HandleRemoteIceCandidate(
-                    root);
-
-                await BroadcastExcept(
-                    room,
-                    sender,
-                    message);
-
-                return;
-            }
-
-            await BroadcastExcept(
-                room,
-                sender,
-                message);
-        }
-        catch (Exception ex)
-        {
-            SetStatus(
-                "Error signaling: " +
-                ex.Message);
-        }
-    }
-
-    private static async Task BroadcastExcept(
-        string room,
-        string exceptClient,
-        object message)
-    {
-        string json =
-            JsonSerializer.Serialize(message);
-
-        await BroadcastExcept(
-            room,
-            exceptClient,
-            json);
-    }
-
-    private static async Task BroadcastExcept(
-        string room,
-        string exceptClient,
-        string json)
-    {
-        if (!Rooms.TryGetValue(
-                room,
-                out var sockets))
-            return;
-
-        byte[] data =
-            Encoding.UTF8.GetBytes(json);
-
-        foreach (var pair in sockets)
-        {
-            if (pair.Key == exceptClient)
-                continue;
-
-            if (pair.Value.State !=
-                WebSocketState.Open)
-                continue;
-
-            try
-            {
-                await pair.Value.SendAsync(
-                    new ArraySegment<byte>(
-                        data),
-                    WebSocketMessageType.Text,
-                    true,
-                    CancellationToken.None);
-            }
-            catch
-            {
-            }
-        }
-    }
-
-    private static async Task SendJson(
-        WebSocket socket,
-        object message)
-    {
-        string json =
-            JsonSerializer.Serialize(message);
-
-        byte[] data =
-            Encoding.UTF8.GetBytes(json);
-
-        await socket.SendAsync(
-            new ArraySegment<byte>(data),
-            WebSocketMessageType.Text,
-            true,
+        await _signalingWebSocket.ConnectAsync(
+            new Uri(url),
             CancellationToken.None);
-    }
 
-    // ============================================================
-    // START WOW
-    // ============================================================
-
-    private static void StartStreaming()
-    {
-        if (_streaming)
-            return;
-
-        if (_wowPathText == null ||
-            !File.Exists(
-                _wowPathText.Text))
-        {
-            MessageBox.Show(
-                "No se encontró Wow.exe.",
-                "WoWStream",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-
-            return;
-        }
-
-        _roomId =
-            _roomText?.Text.Trim() ??
-            GenerateRoomId();
-
-        if (string.IsNullOrWhiteSpace(
-                _roomId))
-        {
-            _roomId =
-                GenerateRoomId();
-        }
-
-        try
-        {
-            StartWoW(
-                _wowPathText.Text);
-
-            SetupWebRtc();
-
-            _streaming = true;
-
-            if (_startButton != null)
-                _startButton.Enabled = false;
-
-            SetStatus(
-                $"WoW iniciado. Sala: {_roomId}");
-        }
-        catch (Exception ex)
-        {
-            SetStatus(
-                "ERROR iniciando WoWStream: " +
-                ex.Message);
-
-            MessageBox.Show(
-                ex.ToString(),
-                "WoWStream",
-                MessageBoxButtons.OK,
-                MessageBoxIcon.Error);
-        }
-    }
-
-    private static void StartWoW(
-        string path)
-    {
-        _wowProcess =
-            new Process
-            {
-                StartInfo =
-                    new ProcessStartInfo
-                    {
-                        FileName = path,
-                        Arguments =
-                            "-windowed",
-                        UseShellExecute = true,
-                        WorkingDirectory =
-                            Path.GetDirectoryName(
-                                path) ??
-                            Environment.CurrentDirectory
-                    }
-            };
-
-        _wowProcess.Start();
-
-        _wowProcess.WaitForInputIdle(10000);
-
-        Thread.Sleep(1500);
-
-        _wowHandle =
-            _wowProcess.MainWindowHandle;
-
-        if (_wowHandle ==
-            IntPtr.Zero)
-        {
-            Thread.Sleep(2000);
-
-            _wowHandle =
-                _wowProcess.MainWindowHandle;
-        }
-
-        SetStatus(
-            "WoW.exe listo.");
-    }
-
-    // ============================================================
-    // WEBRTC SETUP
-    // ============================================================
-
-    private static void SetupWebRtc()
-    {
-        lock (PeerLock)
-        {
-            _peerConnection?.close();
-
-            _peerConnection =
-                new RTCPeerConnection(
-                    new RTCConfiguration
-                    {
-                        iceServers =
-                            new List<RTCIceServer>
-                            {
-                                new RTCIceServer
-                                {
-                                    urls =
-                                        "stun:stun.l.google.com:19302"
-                                }
-                            }
-                    });
-
-            _answerReceived = false;
-            _offerSent = false;
-
-            _peerConnection.onicecandidate +=
-                OnLocalIceCandidate;
-
-            _peerConnection.oniceconnectionstatechange +=
-                state =>
-                {
-                    SetStatus(
-                        "ICE: " +
-                        state);
-                };
-
-            _peerConnection.onconnectionstatechange +=
-                state =>
-                {
-                    SetStatus(
-                        "WebRTC: " +
-                        state);
-                };
-
-            _peerConnection.ondatachannel +=
-                OnDataChannel;
-
-            _vp8Codec =
-                new VP8Codec();
-
-            // IMPORTANTE:
-            // SIPSorcery.VP8 10.0.14 usa
-            // constructor sin argumentos.
-            _videoEncoder =
-                new Vp8NetVideoEncoderEndPoint();
-
-            _videoEncoder.OnVideoSourceEncodedSample +=
-                OnEncodedVideoSample;
-
-            _videoTrack =
-                new MediaStreamTrack(
-                    _videoEncoder
-                        .GetVideoSourceFormats(),
-                    MediaStreamStatusEnum.SendOnly);
-
-            _peerConnection.addTrack(
-                _videoTrack);
-
-            _peerConnection.OnVideoFormatsNegotiated +=
-                formats =>
-                {
-                    if (formats.Count > 0)
-                    {
-                        _videoEncoder
-                            .SetVideoSourceFormat(
-                                formats[0]);
-                    }
-                };
-
-            SetStatus(
-                "WebRTC preparado. Esperando Android...");
-        }
+        Debug.WriteLine(
+            "[SIGNALING] Host connected.");
 
         _ = Task.Run(
-            WaitForAndroidAndCreateOffer);
+            HostSignalingReceiveLoop);
     }
 
-    private static async Task WaitForAndroidAndCreateOffer()
+    private static async Task HostSignalingReceiveLoop()
     {
-        while (_streaming)
+        ClientWebSocket? socket =
+            _signalingWebSocket;
+
+        if (socket == null)
         {
-            if (Rooms.TryGetValue(
-                    _roomId,
-                    out var clients))
+            return;
+        }
+
+        byte[] buffer =
+            new byte[64 * 1024];
+
+        while (socket.State ==
+               WebSocketState.Open)
+        {
+            try
             {
-                foreach (var pair in clients)
+                string? message =
+                    await ReceiveText(
+                        socket,
+                        buffer);
+
+                if (message == null)
                 {
-                    if (pair.Key !=
-                        _hostClientId &&
-                        pair.Value.State ==
-                        WebSocketState.Open)
-                    {
+                    break;
+                }
+
+                Debug.WriteLine(
+                    "[SIGNALING RX] " +
+                    message);
+
+                using JsonDocument doc =
+                    JsonDocument.Parse(message);
+
+                if (!doc.RootElement.TryGetProperty(
+                        "type",
+                        out JsonElement typeElement))
+                {
+                    continue;
+                }
+
+                string type =
+                    typeElement.GetString() ?? "";
+
+                switch (type)
+                {
+                    case "peer-joined":
+
+                        SetStatus(
+                            "Cliente encontrado. " +
+                            "Negociando WebRTC...",
+                            Color.Orange);
+
                         await CreateAndSendOffer();
-                        return;
-                    }
+
+                        break;
+
+                    case "answer":
+
+                        await ProcessAnswer(
+                            doc.RootElement);
+
+                        break;
+
+                    case "ice-candidate":
+
+                        ProcessRemoteIceCandidate(
+                            doc.RootElement);
+
+                        break;
+
+                    case "peer-left":
+
+                        _isStreaming = false;
+
+                        SetStatus(
+                            "Cliente desconectado. " +
+                            "Esperando otro cliente...",
+                            Color.Orange);
+
+                        break;
                 }
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    "HostSignalingReceiveLoop: " +
+                    ex.Message);
 
-            await Task.Delay(250);
+                break;
+            }
         }
     }
 
     // ============================================================
-    // OFFER
+    // WEBRTC
     // ============================================================
 
     private static async Task CreateAndSendOffer()
     {
-        lock (PeerLock)
-        {
-            if (_offerSent)
-                return;
-
-            _offerSent = true;
-        }
-
         try
         {
-            if (_peerConnection == null)
-                return;
+            _isStreaming = false;
 
-            var offer =
-                _peerConnection.createOffer(
-                    null);
+            if (_peerConnection != null)
+            {
+                try
+                {
+                    _peerConnection.Close(
+                        "New negotiation");
+                }
+                catch
+                {
+                }
 
-            await _peerConnection
-                .setLocalDescription(
-                    offer);
+                _peerConnection = null;
+            }
+
+            if (_videoEncoder != null)
+            {
+                try
+                {
+                    _videoEncoder.Dispose();
+                }
+                catch
+                {
+                }
+
+                _videoEncoder = null;
+            }
+
+            _vp8Codec =
+                new VP8Codec();
+
+            RTCConfiguration config =
+                new RTCConfiguration
+                {
+                    iceServers =
+                        new System.Collections.Generic.List<
+                            RTCIceServer>
+                        {
+                            new RTCIceServer
+                            {
+                                urls =
+                                    "stun:stun.l.google.com:19302"
+                            }
+                        }
+                };
+
+            RTCPeerConnection peerConnection =
+                new RTCPeerConnection(config);
+
+            _peerConnection =
+                peerConnection;
+
+            peerConnection.onicecandidate +=
+                candidate =>
+                {
+                    SendIceCandidate(
+                        candidate);
+                };
+
+            peerConnection.oniceconnectionstatechange +=
+                state =>
+                {
+                    SetStatus(
+                        "ICE: " +
+                        state,
+                        Color.LightSkyBlue);
+                };
+
+            peerConnection.onconnectionstatechange +=
+                state =>
+                {
+                    SetStatus(
+                        "WebRTC: " +
+                        state,
+                        Color.LightSkyBlue);
+                };
+
+            _videoEncoder =
+                new Vp8NetVideoEncoderEndPoint();
+
+            MediaStreamTrack videoTrack =
+                new MediaStreamTrack(
+                    _videoEncoder.GetVideoSourceFormats(),
+                    MediaStreamStatusEnum.SendOnly);
+
+            peerConnection.addTrack(
+                videoTrack);
+
+            _videoEncoder.OnVideoSourceEncodedSample +=
+                peerConnection.SendVideo;
+
+            peerConnection.OnVideoFormatsNegotiated +=
+                formats =>
+                {
+                    try
+                    {
+                        if (formats != null &&
+                            formats.Count > 0 &&
+                            _videoEncoder != null)
+                        {
+                            _videoEncoder.SetVideoSourceFormat(
+                                formats[0]);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(
+                            "Video negotiation: " +
+                            ex.Message);
+                    }
+                };
 
             /*
-             * setLocalDescription comienza
-             * la recopilación ICE.
-             *
-             * Esperamos brevemente para que
-             * los candidatos principales queden
-             * incluidos en el SDP.
+             * DataChannel creado por el HOST antes del offer.
+             * Android lo recibirá mediante onDataChannel.
              */
-            await Task.Delay(1500);
+            var dataChannel =
+                await peerConnection.createDataChannel(
+                    "wow_controls");
 
+            dataChannel.onmessage +=
+                (
+                    RTCDataChannel dc,
+                    DataChannelPayloadProtocols type,
+                    byte[] data
+                ) =>
+                {
+                    HandleIncomingWebRtcControls(
+                        data);
+                };
+
+            var offer =
+                peerConnection.createOffer();
+
+            /*
+             * SIPSorcery 10.0.14:
+             * setLocalDescription devuelve
+             * SetDescriptionResultEnum.
+             *
+             * NO usar await.
+             */
+            SetDescriptionResultEnum localResult =
+                peerConnection.setLocalDescription(
+                    offer);
+
+            if (localResult !=
+                SetDescriptionResultEnum.OK)
+            {
+                throw new InvalidOperationException(
+                    "setLocalDescription falló: " +
+                    localResult);
+            }
+
+            /*
+             * SDP es un objeto SIPSorcery.Net.SDP,
+             * no string.
+             */
             string sdp =
-                _peerConnection
-                    .localDescription
-                    .sdp;
+                offer.sdp.ToString();
 
-            string encoded =
+            string base64Sdp =
                 Convert.ToBase64String(
                     Encoding.UTF8.GetBytes(
                         sdp));
 
-            var message =
-                new
-                {
-                    type = "offer",
-                    room = _roomId,
-                    sdp = encoded
-                };
-
-            await BroadcastToRoom(
-                _roomId,
-                _hostClientId,
-                message);
+            await SendSignalingMessage(
+                JsonSerializer.Serialize(
+                    new
+                    {
+                        type = "offer",
+                        room = _roomId,
+                        sdp = base64Sdp
+                    }));
 
             SetStatus(
-                "Offer WebRTC enviada a Android.");
+                "Oferta WebRTC enviada. " +
+                "Esperando respuesta...",
+                Color.Orange);
         }
         catch (Exception ex)
         {
-            SetStatus(
-                "Error creando offer: " +
+            Debug.WriteLine(
+                "CreateAndSendOffer: " +
+                ex);
+
+            ShowError(
+                "No se pudo crear la conexión WebRTC:\r\n\r\n" +
                 ex.Message);
         }
     }
@@ -925,65 +1038,99 @@ internal static class Program
     // ANSWER
     // ============================================================
 
-    private static async Task HandleAnswer(
+    private static async Task ProcessAnswer(
         JsonElement root)
     {
+        RTCPeerConnection? peerConnection =
+            _peerConnection;
+
+        if (peerConnection == null)
+        {
+            return;
+        }
+
+        if (!root.TryGetProperty(
+                "sdp",
+                out JsonElement sdpElement))
+        {
+            return;
+        }
+
+        string encodedSdp =
+            sdpElement.GetString() ?? "";
+
+        if (string.IsNullOrWhiteSpace(encodedSdp))
+        {
+            return;
+        }
+
+        string sdp;
+
         try
         {
-            if (_peerConnection == null)
-                return;
-
-            if (!root.TryGetProperty(
-                    "sdp",
-                    out var sdpElement))
-                return;
-
-            string encoded =
-                sdpElement.GetString() ??
-                "";
-
-            if (string.IsNullOrWhiteSpace(
-                    encoded))
-                return;
-
-            string sdp =
+            sdp =
                 Encoding.UTF8.GetString(
                     Convert.FromBase64String(
-                        encoded));
-
-            var answer =
-                new RTCSessionDescriptionInit
-                {
-                    type =
-                        RTCSdpType.answer,
-                    sdp = sdp
-                };
-
-            await _peerConnection
-                .setRemoteDescription(
-                    answer);
-
-            _answerReceived = true;
-
-            SetStatus(
-                "Answer recibido. WebRTC negociado.");
-
-            _ = Task.Run(
-                StartCaptureLoop);
+                        encodedSdp));
         }
-        catch (Exception ex)
+        catch
+        {
+            sdp =
+                encodedSdp;
+        }
+
+        RTCSessionDescriptionInit remoteDescription =
+            new RTCSessionDescriptionInit
+            {
+                type =
+                    RTCSdpType.answer,
+
+                sdp =
+                    sdp
+            };
+
+        /*
+         * SIPSorcery 10.0.14:
+         * setRemoteDescription devuelve
+         * SetDescriptionResultEnum directamente.
+         *
+         * NO usar await.
+         */
+        SetDescriptionResultEnum result =
+            peerConnection.setRemoteDescription(
+                remoteDescription);
+
+        Debug.WriteLine(
+            "setRemoteDescription(answer): " +
+            result);
+
+        if (result !=
+            SetDescriptionResultEnum.OK)
         {
             SetStatus(
                 "Error aplicando answer: " +
-                ex.Message);
+                result,
+                Color.Red);
+
+            return;
         }
+
+        SetStatus(
+            "Respuesta recibida. " +
+            "WebRTC establecido.",
+            Color.LightGreen);
+
+        _isStreaming = true;
+
+        _ = Task.Run(
+            VideoStreamingLoop);
     }
 
     // ============================================================
-    // ICE
+    // ICE LOCAL
     // ============================================================
 
-    private static void OnLocalIceCandidate(
+    private static void SendIceCandidate(
         RTCIceCandidate candidate)
     {
         _ = Task.Run(
@@ -991,124 +1138,479 @@ internal static class Program
             {
                 try
                 {
-                    var message =
-                        new
-                        {
-                            type =
-                                "ice-candidate",
-                            room =
-                                _roomId,
-                            candidate =
-                                candidate.candidate,
-                            sdpMid =
-                                candidate.sdpMid,
-                            sdpMLineIndex =
-                                candidate.sdpMLineIndex
-                        };
-
-                    await BroadcastToRoom(
-                        _roomId,
-                        _hostClientId,
-                        message);
+                    await SendSignalingMessage(
+                        JsonSerializer.Serialize(
+                            new
+                            {
+                                type =
+                                    "ice-candidate",
+                                room =
+                                    _roomId,
+                                candidate =
+                                    candidate.candidate,
+                                sdpMid =
+                                    candidate.sdpMid,
+                                sdpMLineIndex =
+                                    candidate.sdpMLineIndex
+                            }));
                 }
                 catch (Exception ex)
                 {
-                    SetStatus(
-                        "Error ICE local: " +
+                    Debug.WriteLine(
+                        "SendIceCandidate: " +
                         ex.Message);
                 }
             });
     }
 
-    private static async Task HandleRemoteIceCandidate(
+    // ============================================================
+    // ICE REMOTO
+    // ============================================================
+
+    private static void ProcessRemoteIceCandidate(
         JsonElement root)
     {
+        RTCPeerConnection? peerConnection =
+            _peerConnection;
+
+        if (peerConnection == null)
+        {
+            return;
+        }
+
         try
         {
-            if (_peerConnection == null)
-                return;
-
             if (!root.TryGetProperty(
                     "candidate",
-                    out var candidateElement))
+                    out JsonElement candidateElement))
+            {
                 return;
+            }
 
             string candidate =
-                candidateElement.GetString() ??
-                "";
+                candidateElement.GetString() ?? "";
 
-            if (string.IsNullOrWhiteSpace(
-                    candidate))
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
                 return;
+            }
 
-            string sdpMid = "";
+            string? sdpMid = null;
 
             if (root.TryGetProperty(
                     "sdpMid",
-                    out var midElement))
+                    out JsonElement midElement))
             {
                 sdpMid =
-                    midElement.GetString() ??
-                    "";
+                    midElement.GetString();
             }
 
-            int sdpMLineIndex = 0;
+            ushort sdpMLineIndex =
+                0;
 
             if (root.TryGetProperty(
                     "sdpMLineIndex",
-                    out var indexElement))
+                    out JsonElement indexElement))
             {
-                sdpMLineIndex =
+                int index =
                     indexElement.GetInt32();
+
+                if (index < 0)
+                {
+                    index = 0;
+                }
+
+                if (index >
+                    ushort.MaxValue)
+                {
+                    index =
+                        ushort.MaxValue;
+                }
+
+                sdpMLineIndex =
+                    (ushort)index;
             }
 
-            await _peerConnection.addIceCandidate(
+            /*
+             * SIPSorcery 10.0.14:
+             * addIceCandidate devuelve void.
+             *
+             * NO usar await.
+             */
+            peerConnection.addIceCandidate(
                 new RTCIceCandidateInit
                 {
                     candidate =
                         candidate,
+
                     sdpMid =
                         sdpMid,
+
                     sdpMLineIndex =
                         sdpMLineIndex
                 });
         }
         catch (Exception ex)
         {
-            SetStatus(
-                "Error ICE remoto: " +
+            Debug.WriteLine(
+                "ProcessRemoteIceCandidate: " +
                 ex.Message);
         }
     }
 
-    private static async Task BroadcastToRoom(
-        string room,
-        string sender,
-        object message)
+    // ============================================================
+    // VIDEO
+    // ============================================================
+
+    private static async Task VideoStreamingLoop()
     {
-        if (!Rooms.TryGetValue(
-                room,
-                out var sockets))
-            return;
+        const int width = 1280;
+        const int height = 720;
 
-        string json =
-            JsonSerializer.Serialize(message);
-
-        byte[] data =
-            Encoding.UTF8.GetBytes(json);
-
-        foreach (var pair in sockets)
+        while (_isStreaming &&
+               !_shuttingDown &&
+               _videoEncoder != null)
         {
-            if (pair.Key == sender)
-                continue;
+            Process? process =
+                _wowProcess;
 
-            if (pair.Value.State !=
-                WebSocketState.Open)
-                continue;
+            if (process == null)
+            {
+                break;
+            }
 
             try
             {
-                await pair.Value.SendAsync(
+                if (process.HasExited)
+                {
+                    break;
+                }
+            }
+            catch
+            {
+                break;
+            }
+
+            try
+            {
+                using Bitmap bmp =
+                    new Bitmap(
+                        width,
+                        height,
+                        PixelFormat.Format24bppRgb);
+
+                using Graphics g =
+                    Graphics.FromImage(bmp);
+
+                g.CopyFromScreen(
+                    0,
+                    0,
+                    0,
+                    0,
+                    bmp.Size,
+                    CopyPixelOperation.SourceCopy);
+
+                Rectangle rect =
+                    new Rectangle(
+                        0,
+                        0,
+                        bmp.Width,
+                        bmp.Height);
+
+                BitmapData data =
+                    bmp.LockBits(
+                        rect,
+                        ImageLockMode.ReadOnly,
+                        PixelFormat.Format24bppRgb);
+
+                try
+                {
+                    int stride =
+                        Math.Abs(data.Stride);
+
+                    int rowBytes =
+                        bmp.Width * 3;
+
+                    byte[] rawBgr =
+                        new byte[
+                            rowBytes *
+                            bmp.Height];
+
+                    for (int y = 0;
+                         y < bmp.Height;
+                         y++)
+                    {
+                        IntPtr source =
+                            IntPtr.Add(
+                                data.Scan0,
+                                y * data.Stride);
+
+                        Marshal.Copy(
+                            source,
+                            rawBgr,
+                            y * rowBytes,
+                            rowBytes);
+                    }
+
+                    Vp8NetVideoEncoderEndPoint? encoder =
+                        _videoEncoder;
+
+                    if (encoder != null)
+                    {
+                        encoder.ExternalVideoSourceRawSample(
+                            33,
+                            bmp.Width,
+                            bmp.Height,
+                            rawBgr,
+                            VideoPixelFormatsEnum.Bgr);
+                    }
+                }
+                finally
+                {
+                    bmp.UnlockBits(data);
+                }
+
+                await Task.Delay(33);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine(
+                    "VideoStreamingLoop: " +
+                    ex.Message);
+
+                await Task.Delay(100);
+            }
+        }
+
+        _isStreaming = false;
+    }
+
+    // ============================================================
+    // WEBRTC DATA CHANNEL
+    // ============================================================
+
+    private static void HandleIncomingWebRtcControls(
+        byte[] data)
+    {
+        if (data == null ||
+            data.Length < 3 ||
+            _wowHandle == IntPtr.Zero)
+        {
+            return;
+        }
+
+        byte type =
+            data[0];
+
+        /*
+         * Keyboard:
+         *
+         * [0] = tipo
+         * [1] = acción
+         * [2] = tecla
+         */
+        if (type == 0)
+        {
+            byte action =
+                data[1];
+
+            byte keyChar =
+                data[2];
+
+            uint msg =
+                action == 1
+                    ? WM_KEYDOWN
+                    : WM_KEYUP;
+
+            uint virtualKey =
+                keyChar switch
+                {
+                    (byte)'W' => 0x57,
+                    (byte)'A' => 0x41,
+                    (byte)'S' => 0x53,
+                    (byte)'D' => 0x44,
+                    (byte)'M' => 0x4D,
+                    0x20 => 0x20,
+                    _ => keyChar
+                };
+
+            PostMessage(
+                _wowHandle,
+                msg,
+                new IntPtr(
+                    virtualKey),
+                IntPtr.Zero);
+
+            return;
+        }
+
+        /*
+         * Mouse:
+         *
+         * [0] = tipo
+         * [1] = acción
+         * [2..5] = X
+         * [6..9] = Y
+         */
+        if (type == 1 &&
+            data.Length >= 10)
+        {
+            byte mouseAction =
+                data[1];
+
+            float pctX =
+                BitConverter.ToSingle(
+                    data,
+                    2);
+
+            float pctY =
+                BitConverter.ToSingle(
+                    data,
+                    6);
+
+            if (float.IsNaN(pctX) ||
+                float.IsInfinity(pctX) ||
+                float.IsNaN(pctY) ||
+                float.IsInfinity(pctY))
+            {
+                return;
+            }
+
+            pctX =
+                Math.Clamp(
+                    pctX,
+                    0.0f,
+                    1.0f);
+
+            pctY =
+                Math.Clamp(
+                    pctY,
+                    0.0f,
+                    1.0f);
+
+            if (!GetClientRect(
+                    _wowHandle,
+                    out RECT rect))
+            {
+                return;
+            }
+
+            int width =
+                rect.Right -
+                rect.Left;
+
+            int height =
+                rect.Bottom -
+                rect.Top;
+
+            if (width <= 0 ||
+                height <= 0)
+            {
+                return;
+            }
+
+            int x =
+                (int)(
+                    pctX *
+                    (width - 1));
+
+            int y =
+                (int)(
+                    pctY *
+                    (height - 1));
+
+            IntPtr lParam =
+                new IntPtr(
+                    (y << 16) |
+                    (x & 0xFFFF));
+
+            bool leftButton =
+                pctY > 0.70f;
+
+            uint mouseMsg;
+
+            if (leftButton)
+            {
+                mouseMsg =
+                    mouseAction == 1
+                        ? WM_LBUTTONDOWN
+                        : WM_LBUTTONUP;
+            }
+            else
+            {
+                mouseMsg =
+                    mouseAction == 1
+                        ? WM_RBUTTONDOWN
+                        : WM_RBUTTONUP;
+            }
+
+            PostMessage(
+                _wowHandle,
+                mouseMsg,
+                IntPtr.Zero,
+                lParam);
+        }
+    }
+
+    // ============================================================
+    // SIGNALING HELPERS
+    // ============================================================
+
+    private static async Task SendSignalingMessage(
+        string message)
+    {
+        ClientWebSocket? socket =
+            _signalingWebSocket;
+
+        if (socket == null ||
+            socket.State !=
+                WebSocketState.Open)
+        {
+            throw new InvalidOperationException(
+                "El WebSocket de signaling no está conectado.");
+        }
+
+        byte[] data =
+            Encoding.UTF8.GetBytes(
+                message);
+
+        await socket.SendAsync(
+            new ArraySegment<byte>(data),
+            WebSocketMessageType.Text,
+            true,
+            CancellationToken.None);
+    }
+
+    private static async Task Broadcast(
+        ConcurrentDictionary<
+            string,
+            WebSocket> clients,
+        string senderId,
+        string message)
+    {
+        byte[] data =
+            Encoding.UTF8.GetBytes(
+                message);
+
+        foreach (var pair in clients)
+        {
+            if (pair.Key == senderId)
+            {
+                continue;
+            }
+
+            WebSocket socket =
+                pair.Value;
+
+            if (socket.State !=
+                WebSocketState.Open)
+            {
+                continue;
+            }
+
+            try
+            {
+                await socket.SendAsync(
                     new ArraySegment<byte>(
                         data),
                     WebSocketMessageType.Text,
@@ -1121,373 +1623,104 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    // DATA CHANNEL
-    // ============================================================
-
-    private static void OnDataChannel(
-        RTCDataChannel channel)
+    private static async Task<string?> ReceiveText(
+        WebSocket socket,
+        byte[] buffer)
     {
-        SetStatus(
-            "DataChannel recibido: " +
-            channel.label);
+        using MemoryStream stream =
+            new MemoryStream();
 
-        if (!string.Equals(
-                channel.label,
-                "wow_controls",
-                StringComparison.Ordinal))
+        WebSocketReceiveResult result;
+
+        do
+        {
+            result =
+                await socket.ReceiveAsync(
+                    new ArraySegment<byte>(
+                        buffer),
+                    CancellationToken.None);
+
+            if (result.MessageType ==
+                WebSocketMessageType.Close)
+            {
+                return null;
+            }
+
+            if (result.Count > 0)
+            {
+                stream.Write(
+                    buffer,
+                    0,
+                    result.Count);
+            }
+        }
+        while (!result.EndOfMessage);
+
+        return Encoding.UTF8.GetString(
+            stream.ToArray());
+    }
+
+    private static async Task SendText(
+        WebSocket socket,
+        string message)
+    {
+        if (socket.State !=
+            WebSocketState.Open)
         {
             return;
         }
 
-        _controlDataChannel =
-            channel;
+        byte[] data =
+            Encoding.UTF8.GetBytes(
+                message);
 
-        channel.onmessage +=
-            (
-                RTCDataChannel dc,
-                DataChannelPayloadProtocols protocol,
-                byte[] data
-            ) =>
-            {
-                ProcessControlPacket(
-                    data);
-            };
-
-        channel.onopen +=
-            () =>
-            {
-                SetStatus(
-                    "DataChannel wow_controls abierto.");
-            };
+        await socket.SendAsync(
+            new ArraySegment<byte>(
+                data),
+            WebSocketMessageType.Text,
+            true,
+            CancellationToken.None);
     }
 
-    private static void ProcessControlPacket(
-        byte[] data)
+    private static async Task CloseSocket(
+        WebSocket socket)
     {
         try
         {
-            if (data == null ||
-                data.Length < 2)
-                return;
-
-            byte type =
-                data[0];
-
-            byte action =
-                data[1];
-
-            bool pressed =
-                action != 0;
-
-            if (type == 0)
+            if (socket.State ==
+                WebSocketState.Open)
             {
-                if (data.Length < 3)
-                    return;
-
-                byte key =
-                    data[2];
-
-                SendKeyboard(
-                    key,
-                    pressed);
-
-                return;
+                await socket.CloseAsync(
+                    WebSocketCloseStatus.NormalClosure,
+                    "WoWStream closing",
+                    CancellationToken.None);
             }
-
-            if (type == 1)
-            {
-                if (data.Length < 10)
-                    return;
-
-                float x =
-                    BitConverter.ToSingle(
-                        data,
-                        2);
-
-                float y =
-                    BitConverter.ToSingle(
-                        data,
-                        6);
-
-                SendMouse(
-                    x,
-                    y,
-                    pressed);
-            }
-        }
-        catch (Exception ex)
-        {
-            SetStatus(
-                "Input error: " +
-                ex.Message);
-        }
-    }
-
-    // ============================================================
-    // KEYBOARD
-    // ============================================================
-
-    private static void SendKeyboard(
-        byte key,
-        bool pressed)
-    {
-        if (_wowHandle ==
-            IntPtr.Zero)
-            return;
-
-        uint vk =
-            key switch
-            {
-                (byte)'W' => 0x57,
-                (byte)'A' => 0x41,
-                (byte)'S' => 0x53,
-                (byte)'D' => 0x44,
-                (byte)'M' => 0x4D,
-
-                // Espacio.
-                0x20 => 0x20,
-
-                _ => key
-            };
-
-        PostMessage(
-            _wowHandle,
-            pressed
-                ? WM_KEYDOWN
-                : WM_KEYUP,
-            new IntPtr(vk),
-            IntPtr.Zero);
-    }
-
-    // ============================================================
-    // MOUSE
-    // ============================================================
-
-    private static void SendMouse(
-        float normalizedX,
-        float normalizedY,
-        bool pressed)
-    {
-        if (_wowHandle ==
-            IntPtr.Zero)
-            return;
-
-        normalizedX =
-            Math.Clamp(
-                normalizedX,
-                0f,
-                1f);
-
-        normalizedY =
-            Math.Clamp(
-                normalizedY,
-                0f,
-                1f);
-
-        if (!GetClientRect(
-                _wowHandle,
-                out RECT rect))
-            return;
-
-        int width =
-            rect.Right -
-            rect.Left;
-
-        int height =
-            rect.Bottom -
-            rect.Top;
-
-        if (width <= 0 ||
-            height <= 0)
-            return;
-
-        int x =
-            (int)(
-                normalizedX *
-                (width - 1));
-
-        int y =
-            (int)(
-                normalizedY *
-                (height - 1));
-
-        IntPtr lParam =
-            new IntPtr(
-                (y << 16) |
-                (x & 0xFFFF));
-
-        /*
-         * Mantiene el comportamiento
-         * del código original:
-         *
-         * zona inferior = botón izquierdo
-         * resto = botón derecho
-         */
-        bool useLeftButton =
-            normalizedY > 0.70f;
-
-        uint downMessage =
-            useLeftButton
-                ? WM_LBUTTONDOWN
-                : WM_RBUTTONDOWN;
-
-        uint upMessage =
-            useLeftButton
-                ? WM_LBUTTONUP
-                : WM_RBUTTONUP;
-
-        PostMessage(
-            _wowHandle,
-            pressed
-                ? downMessage
-                : upMessage,
-            IntPtr.Zero,
-            lParam);
-    }
-
-    // ============================================================
-    // CAPTURA DE PANTALLA
-    // ============================================================
-
-    private static async Task StartCaptureLoop()
-    {
-        while (
-            _streaming &&
-            _answerReceived)
-        {
-            try
-            {
-                if (_videoEncoder == null)
-                {
-                    await Task.Delay(100);
-                    continue;
-                }
-
-                CaptureFrame();
-
-                await Task.Delay(
-                    33);
-            }
-            catch (Exception ex)
-            {
-                SetStatus(
-                    "Error captura: " +
-                    ex.Message);
-
-                await Task.Delay(
-                    250);
-            }
-        }
-    }
-
-    private static void CaptureFrame()
-    {
-        const int width = 1280;
-        const int height = 720;
-
-        using var bitmap =
-            new Bitmap(
-                width,
-                height,
-                PixelFormat.Format24bppRgb);
-
-        using (
-            Graphics graphics =
-                Graphics.FromImage(bitmap))
-        {
-            graphics.CopyFromScreen(
-                0,
-                0,
-                0,
-                0,
-                new Size(
-                    width,
-                    height),
-                CopyPixelOperation.SourceCopy);
-        }
-
-        Rectangle rect =
-            new Rectangle(
-                0,
-                0,
-                width,
-                height);
-
-        BitmapData bitmapData =
-            bitmap.LockBits(
-                rect,
-                ImageLockMode.ReadOnly,
-                PixelFormat.Format24bppRgb);
-
-        try
-        {
-            int stride =
-                Math.Abs(
-                    bitmapData.Stride);
-
-            int bytes =
-                stride *
-                height;
-
-            byte[] bgr =
-                new byte[
-                    width *
-                    height *
-                    3];
-
-            for (int y = 0; y < height; y++)
-            {
-                IntPtr source =
-                    IntPtr.Add(
-                        bitmapData.Scan0,
-                        y * bitmapData.Stride);
-
-                Marshal.Copy(
-                    source,
-                    bgr,
-                    y * width * 3,
-                    width * 3);
-            }
-
-            _videoEncoder
-                .ExternalVideoSourceRawSample(
-                    33,
-                    width,
-                    height,
-                    bgr,
-                    VideoPixelFormatsEnum.Bgr);
-        }
-        finally
-        {
-            bitmap.UnlockBits(
-                bitmapData);
-        }
-    }
-
-    private static void OnEncodedVideoSample(
-        uint durationRtpTimestamp,
-        byte[] encodedSample)
-    {
-        if (_peerConnection == null)
-            return;
-
-        if (!_answerReceived)
-            return;
-
-        try
-        {
-            _peerConnection.SendVideo(
-                durationRtpTimestamp,
-                encodedSample);
         }
         catch
         {
+            try
+            {
+                socket.Abort();
+            }
+            catch
+            {
+            }
         }
     }
 
+    private static string CreateError(
+        string message)
+    {
+        return JsonSerializer.Serialize(
+            new
+            {
+                type = "error",
+                message
+            });
+    }
+
     // ============================================================
-    // UTILIDADES
+    // UTILITIES
     // ============================================================
 
     private static string GenerateRoomId()
@@ -1498,17 +1731,206 @@ internal static class Program
             .ToUpperInvariant();
     }
 
+    private static string GetLocalIPv4()
+    {
+        try
+        {
+            foreach (
+                System.Net.NetworkInformation.NetworkInterface nic
+                in
+                System.Net.NetworkInformation.NetworkInterface
+                    .GetAllNetworkInterfaces())
+            {
+                if (nic.OperationalStatus !=
+                    System.Net.NetworkInformation
+                        .OperationalStatus.Up)
+                {
+                    continue;
+                }
+
+                if (nic.NetworkInterfaceType ==
+                    System.Net.NetworkInformation
+                        .NetworkInterfaceType.Loopback)
+                {
+                    continue;
+                }
+
+                foreach (
+                    System.Net.NetworkInformation
+                        .UnicastIPAddressInformation address
+                    in
+                    nic.GetIPProperties()
+                        .UnicastAddresses)
+                {
+                    if (address.Address.AddressFamily ==
+                        System.Net.Sockets.AddressFamily.InterNetwork)
+                    {
+                        return address.Address.ToString();
+                    }
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        return "127.0.0.1";
+    }
+
+    private static void SetStatus(
+        string text,
+        Color color)
+    {
+        Form? form =
+            _mainForm;
+
+        Label? status =
+            _lblStatus;
+
+        if (form == null ||
+            status == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (form.InvokeRequired)
+            {
+                form.BeginInvoke(
+                    (MethodInvoker)(() =>
+                    {
+                        if (_lblStatus != null)
+                        {
+                            _lblStatus.Text =
+                                text;
+
+                            _lblStatus.ForeColor =
+                                color;
+                        }
+                    }));
+
+                return;
+            }
+
+            status.Text =
+                text;
+
+            status.ForeColor =
+                color;
+        }
+        catch
+        {
+        }
+    }
+
+    private static void ShowError(
+        string message)
+    {
+        Form? form =
+            _mainForm;
+
+        if (form == null)
+        {
+            return;
+        }
+
+        try
+        {
+            form.BeginInvoke(
+                (MethodInvoker)(() =>
+                {
+                    MessageBox.Show(
+                        form,
+                        message,
+                        "WoWStream",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }));
+        }
+        catch
+        {
+        }
+    }
+
+    private static void SetUIBusy(
+        bool busy)
+    {
+        Form? form =
+            _mainForm;
+
+        if (form == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (form.InvokeRequired)
+            {
+                form.BeginInvoke(
+                    (MethodInvoker)(() =>
+                    {
+                        SetUIBusyInternal(
+                            busy);
+                    }));
+
+                return;
+            }
+
+            SetUIBusyInternal(
+                busy);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void SetUIBusyInternal(
+        bool busy)
+    {
+        if (_btnStart != null)
+        {
+            _btnStart.Enabled =
+                !busy;
+        }
+
+        if (_btnBrowse != null)
+        {
+            _btnBrowse.Enabled =
+                !busy;
+        }
+
+        if (_txtWowPath != null)
+        {
+            _txtWowPath.Enabled =
+                !busy;
+        }
+
+        if (_txtConnectionId != null)
+        {
+            _txtConnectionId.Enabled =
+                !busy;
+        }
+    }
+
     // ============================================================
     // SHUTDOWN
     // ============================================================
 
-    private static void Shutdown()
+    private static async Task ShutdownAsync()
     {
-        _streaming = false;
+        if (_shuttingDown)
+        {
+            return;
+        }
+
+        _shuttingDown = true;
+        _isStreaming = false;
 
         try
         {
-            _controlDataChannel?.close();
+            _serverCancellation?.Cancel();
         }
         catch
         {
@@ -1516,7 +1938,19 @@ internal static class Program
 
         try
         {
-            _peerConnection?.close();
+            ClientWebSocket? socket =
+                _signalingWebSocket;
+
+            if (socket != null)
+            {
+                await CloseSocket(
+                    socket);
+
+                socket.Dispose();
+
+                _signalingWebSocket =
+                    null;
+            }
         }
         catch
         {
@@ -1524,33 +1958,23 @@ internal static class Program
 
         try
         {
-            _videoEncoder?.CloseVideo();
+            HttpListener? server =
+                _signalingServer;
+
+            _signalingServer =
+                null;
+
+            if (server != null)
+            {
+                server.Stop();
+                server.Close();
+            }
         }
         catch
         {
         }
 
-        try
-        {
-            _videoEncoder?.Dispose();
-        }
-        catch
-        {
-        }
-
-        _videoEncoder = null;
-        _vp8Codec = null;
-
-        try
-        {
-            SignalingServer.Stop();
-            SignalingServer.Close();
-        }
-        catch
-        {
-        }
-
-        foreach (var room in Rooms)
+        foreach (var room in _rooms)
         {
             foreach (var socket in room.Value)
             {
@@ -1564,18 +1988,67 @@ internal static class Program
             }
         }
 
-        Rooms.Clear();
+        _rooms.Clear();
 
         try
         {
-            if (_wowProcess != null &&
-                !_wowProcess.HasExited)
+            RTCPeerConnection? peer =
+                _peerConnection;
+
+            _peerConnection =
+                null;
+
+            if (peer != null)
             {
-                _wowProcess.CloseMainWindow();
+                peer.Close(
+                    "WoWStream shutdown");
             }
         }
         catch
         {
         }
+
+        try
+        {
+            Vp8NetVideoEncoderEndPoint? encoder =
+                _videoEncoder;
+
+            _videoEncoder =
+                null;
+
+            if (encoder != null)
+            {
+                encoder.Dispose();
+            }
+        }
+        catch
+        {
+        }
+
+        _vp8Codec =
+            null;
+
+        try
+        {
+            Process? process =
+                _wowProcess;
+
+            _wowProcess =
+                null;
+
+            if (process != null)
+            {
+                if (!process.HasExited)
+                {
+                    process.CloseMainWindow();
+                }
+            }
+        }
+        catch
+        {
+        }
+
+        _wowHandle =
+            IntPtr.Zero;
     }
 }
