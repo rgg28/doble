@@ -985,8 +985,8 @@ internal static class Program
              * NO usar await.
              */
             SetDescriptionResultEnum localResult =
-                peerConnection.setLocalDescription(
-                    offer);
+    await peerConnection.setLocalDescription(
+        offer);
 
             if (localResult !=
                 SetDescriptionResultEnum.OK)
