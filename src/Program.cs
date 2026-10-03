@@ -19,10 +19,6 @@ using Vpx.Net;
 
 internal static class Program
 {
-    // ============================================================
-    // WoWStream
-    // ============================================================
-
     private const int SignalingPort = 8080;
 
     private static readonly string SignalingHost =
@@ -51,10 +47,6 @@ internal static class Program
         ConcurrentDictionary<string, WebSocket>>
         _rooms = new();
 
-    // ============================================================
-    // UI
-    // ============================================================
-
     private static Form? _mainForm;
     private static TextBox? _txtWowPath;
     private static TextBox? _txtConnectionId;
@@ -63,10 +55,6 @@ internal static class Program
     private static Label? _lblStatus;
     private static Label? _lblRoom;
     private static Label? _lblServer;
-
-    // ============================================================
-    // Windows API
-    // ============================================================
 
     [DllImport("user32.dll")]
     private static extern bool PostMessage(
@@ -91,16 +79,10 @@ internal static class Program
 
     private const uint WM_KEYDOWN = 0x0100;
     private const uint WM_KEYUP = 0x0101;
-
     private const uint WM_LBUTTONDOWN = 0x0201;
     private const uint WM_LBUTTONUP = 0x0202;
-
     private const uint WM_RBUTTONDOWN = 0x0204;
     private const uint WM_RBUTTONUP = 0x0205;
-
-    // ============================================================
-    // MAIN
-    // ============================================================
 
     [STAThread]
     private static void Main(string[] args)
@@ -108,8 +90,11 @@ internal static class Program
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
 
-        _roomId = GenerateRoomId();
-        _localIp = GetLocalIPv4();
+        _roomId =
+            GenerateRoomId();
+
+        _localIp =
+            GetLocalIPv4();
 
         CreateMainForm();
 
@@ -122,103 +107,120 @@ internal static class Program
         Application.Run(_mainForm!);
     }
 
-    // ============================================================
-    // UI
-    // ============================================================
-
     private static void CreateMainForm()
     {
-        _mainForm = new Form
-        {
-            Text = "WoWStream",
-            Width = 560,
-            Height = 310,
-            FormBorderStyle = FormBorderStyle.FixedSingle,
-            MaximizeBox = false,
-            StartPosition = FormStartPosition.CenterScreen,
-            BackColor = Color.FromArgb(20, 24, 30)
-        };
+        _mainForm =
+            new Form
+            {
+                Text = "WoWStream",
+                Width = 560,
+                Height = 310,
+                FormBorderStyle =
+                    FormBorderStyle.FixedSingle,
+                MaximizeBox = false,
+                StartPosition =
+                    FormStartPosition.CenterScreen,
+                BackColor =
+                    Color.FromArgb(20, 24, 30)
+            };
 
-        Label lblTitle = new Label
-        {
-            Text = "WoWStream",
-            Left = 20,
-            Top = 12,
-            Width = 500,
-            Height = 30,
-            ForeColor = Color.Cyan,
-            Font = new Font(
-                "Segoe UI",
-                16,
-                FontStyle.Bold)
-        };
+        Label lblTitle =
+            new Label
+            {
+                Text = "WoWStream",
+                Left = 20,
+                Top = 12,
+                Width = 500,
+                Height = 30,
+                ForeColor = Color.Cyan,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        16,
+                        FontStyle.Bold)
+            };
 
-        Label lblPath = new Label
-        {
-            Text = "Ruta de Wow.exe:",
-            Left = 20,
-            Top = 50,
-            Width = 130,
-            ForeColor = Color.White,
-            Font = new Font(
-                "Segoe UI",
-                9,
-                FontStyle.Bold)
-        };
+        Label lblPath =
+            new Label
+            {
+                Text = "Ruta de Wow.exe:",
+                Left = 20,
+                Top = 50,
+                Width = 130,
+                ForeColor = Color.White,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        9,
+                        FontStyle.Bold)
+            };
 
-        _txtWowPath = new TextBox
-        {
-            Left = 20,
-            Top = 73,
-            Width = 390,
-            Text =
-                @"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe",
-            BackColor = Color.FromArgb(40, 44, 52),
-            ForeColor = Color.White,
-            BorderStyle = BorderStyle.FixedSingle
-        };
+        _txtWowPath =
+            new TextBox
+            {
+                Left = 20,
+                Top = 73,
+                Width = 390,
+                Text =
+                    @"C:\Program Files (x86)\World of Warcraft\_retail_\Wow.exe",
+                BackColor =
+                    Color.FromArgb(40, 44, 52),
+                ForeColor = Color.White,
+                BorderStyle =
+                    BorderStyle.FixedSingle
+            };
 
-        _btnBrowse = new Button
-        {
-            Text = "Buscar...",
-            Left = 420,
-            Top = 71,
-            Width = 100,
-            Height = 27,
-            BackColor = Color.FromArgb(60, 65, 75),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat
-        };
+        _btnBrowse =
+            new Button
+            {
+                Text = "Buscar...",
+                Left = 420,
+                Top = 71,
+                Width = 100,
+                Height = 27,
+                BackColor =
+                    Color.FromArgb(60, 65, 75),
+                ForeColor = Color.White,
+                FlatStyle =
+                    FlatStyle.Flat
+            };
 
-        _btnBrowse.Click += BtnBrowse_Click;
+        _btnBrowse.Click +=
+            BtnBrowse_Click;
 
-        Label lblId = new Label
-        {
-            Text = "ID de conexión:",
-            Left = 20,
-            Top = 112,
-            Width = 130,
-            ForeColor = Color.White,
-            Font = new Font(
-                "Segoe UI",
-                9,
-                FontStyle.Bold)
-        };
+        Label lblId =
+            new Label
+            {
+                Text = "ID de conexión:",
+                Left = 20,
+                Top = 112,
+                Width = 130,
+                ForeColor = Color.White,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        9,
+                        FontStyle.Bold)
+            };
 
-        _txtConnectionId = new TextBox
-        {
-            Left = 20,
-            Top = 135,
-            Width = 230,
-            Text = _roomId,
-            BackColor = Color.FromArgb(40, 44, 52),
-            ForeColor = Color.Cyan,
-            BorderStyle = BorderStyle.FixedSingle,
-            Font = new Font(
-                "Segoe UI",
-                10,
-                FontStyle.Bold)
-        };
+        _txtConnectionId =
+            new TextBox
+            {
+                Left = 20,
+                Top = 135,
+                Width = 230,
+                Text = _roomId,
+                BackColor =
+                    Color.FromArgb(40, 44, 52),
+                ForeColor = Color.Cyan,
+                BorderStyle =
+                    BorderStyle.FixedSingle,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        10,
+                        FontStyle.Bold)
+            };
 
         _txtConnectionId.TextChanged +=
             (_, _) =>
@@ -228,110 +230,150 @@ internal static class Program
 
                 if (!string.IsNullOrWhiteSpace(value))
                 {
-                    _roomId = value;
+                    _roomId =
+                        value;
 
                     if (_lblRoom != null)
                     {
                         _lblRoom.Text =
-                            "Sala: " + _roomId;
+                            "Sala: " +
+                            _roomId;
                     }
                 }
             };
 
-        _lblRoom = new Label
-        {
-            Text = "Sala: " + _roomId,
-            Left = 270,
-            Top = 138,
-            Width = 250,
-            ForeColor = Color.LightGreen,
-            Font = new Font(
-                "Segoe UI",
-                9,
-                FontStyle.Bold)
-        };
+        _lblRoom =
+            new Label
+            {
+                Text =
+                    "Sala: " +
+                    _roomId,
+                Left = 270,
+                Top = 138,
+                Width = 250,
+                ForeColor =
+                    Color.LightGreen,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        9,
+                        FontStyle.Bold)
+            };
 
-        _btnStart = new Button
-        {
-            Text = "INICIAR WoWStream",
-            Left = 20,
-            Top = 180,
-            Width = 230,
-            Height = 38,
-            BackColor = Color.FromArgb(75, 100, 205),
-            ForeColor = Color.White,
-            FlatStyle = FlatStyle.Flat,
-            Font = new Font(
-                "Segoe UI",
-                10,
-                FontStyle.Bold)
-        };
+        _btnStart =
+            new Button
+            {
+                Text = "INICIAR WoWStream",
+                Left = 20,
+                Top = 180,
+                Width = 230,
+                Height = 38,
+                BackColor =
+                    Color.FromArgb(
+                        75,
+                        100,
+                        205),
+                ForeColor = Color.White,
+                FlatStyle =
+                    FlatStyle.Flat,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        10,
+                        FontStyle.Bold)
+            };
 
-        _btnStart.Click += BtnStart_Click;
+        _btnStart.Click +=
+            BtnStart_Click;
 
-        _lblStatus = new Label
-        {
-            Text = "Estado: Detenido.",
-            Left = 270,
-            Top = 190,
-            Width = 250,
-            Height = 25,
-            ForeColor = Color.Gray,
-            Font = new Font(
-                "Segoe UI",
-                9,
-                FontStyle.Bold)
-        };
+        _lblStatus =
+            new Label
+            {
+                Text =
+                    "Estado: Detenido.",
+                Left = 270,
+                Top = 190,
+                Width = 250,
+                Height = 25,
+                ForeColor =
+                    Color.Gray,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        9,
+                        FontStyle.Bold)
+            };
 
-        _lblServer = new Label
-        {
-            Text =
-                $"Signaling: ws://{_localIp}:{SignalingPort}/ws",
-            Left = 20,
-            Top = 235,
-            Width = 500,
-            Height = 25,
-            ForeColor = Color.LightSkyBlue,
-            Font = new Font(
-                "Segoe UI",
-                8,
-                FontStyle.Regular)
-        };
+        _lblServer =
+            new Label
+            {
+                Text =
+                    $"Signaling: ws://{_localIp}:{SignalingPort}/ws",
+                Left = 20,
+                Top = 235,
+                Width = 500,
+                Height = 25,
+                ForeColor =
+                    Color.LightSkyBlue,
+                Font =
+                    new Font(
+                        "Segoe UI",
+                        8,
+                        FontStyle.Regular)
+            };
 
-        _mainForm.Controls.Add(lblTitle);
-        _mainForm.Controls.Add(lblPath);
-        _mainForm.Controls.Add(_txtWowPath);
-        _mainForm.Controls.Add(_btnBrowse);
-        _mainForm.Controls.Add(lblId);
-        _mainForm.Controls.Add(_txtConnectionId);
-        _mainForm.Controls.Add(_lblRoom);
-        _mainForm.Controls.Add(_btnStart);
-        _mainForm.Controls.Add(_lblStatus);
-        _mainForm.Controls.Add(_lblServer);
+        _mainForm.Controls.Add(
+            lblTitle);
+
+        _mainForm.Controls.Add(
+            lblPath);
+
+        _mainForm.Controls.Add(
+            _txtWowPath);
+
+        _mainForm.Controls.Add(
+            _btnBrowse);
+
+        _mainForm.Controls.Add(
+            lblId);
+
+        _mainForm.Controls.Add(
+            _txtConnectionId);
+
+        _mainForm.Controls.Add(
+            _lblRoom);
+
+        _mainForm.Controls.Add(
+            _btnStart);
+
+        _mainForm.Controls.Add(
+            _lblStatus);
+
+        _mainForm.Controls.Add(
+            _lblServer);
     }
 
     private static void BtnBrowse_Click(
         object? sender,
         EventArgs e)
     {
-        using OpenFileDialog ofd = new OpenFileDialog
-        {
-            Filter =
-                "Ejecutable de WoW (*.exe)|*.exe|Todos los archivos (*.*)|*.*"
-        };
+        using OpenFileDialog ofd =
+            new OpenFileDialog
+            {
+                Filter =
+                    "Ejecutable de WoW (*.exe)|*.exe|Todos los archivos (*.*)|*.*"
+            };
 
-        if (ofd.ShowDialog() == DialogResult.OK)
+        if (ofd.ShowDialog() ==
+            DialogResult.OK)
         {
             if (_txtWowPath != null)
             {
-                _txtWowPath.Text = ofd.FileName;
+                _txtWowPath.Text =
+                    ofd.FileName;
             }
         }
     }
-
-    // ============================================================
-    // START
-    // ============================================================
 
     private static async void BtnStart_Click(
         object? sender,
@@ -354,7 +396,8 @@ internal static class Program
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(connectionId))
+        if (string.IsNullOrWhiteSpace(
+                connectionId))
         {
             MessageBox.Show(
                 "Introduce un ID de conexión.",
@@ -365,8 +408,11 @@ internal static class Program
             return;
         }
 
-        _roomId = connectionId;
-        _shuttingDown = false;
+        _roomId =
+            connectionId;
+
+        _shuttingDown =
+            false;
 
         SetUIBusy(true);
 
@@ -385,16 +431,21 @@ internal static class Program
             ProcessStartInfo startInfo =
                 new ProcessStartInfo
                 {
-                    FileName = wowPath,
-                    Arguments = "-windowed",
-                    UseShellExecute = true,
+                    FileName =
+                        wowPath,
+                    Arguments =
+                        "-windowed",
+                    UseShellExecute =
+                        true,
                     WorkingDirectory =
-                        Path.GetDirectoryName(wowPath)
+                        Path.GetDirectoryName(
+                            wowPath)
                         ?? Environment.CurrentDirectory
                 };
 
             _wowProcess =
-                Process.Start(startInfo);
+                Process.Start(
+                    startInfo);
 
             if (_wowProcess == null)
             {
@@ -418,7 +469,8 @@ internal static class Program
                 }
                 catch
                 {
-                    _wowHandle = IntPtr.Zero;
+                    _wowHandle =
+                        IntPtr.Zero;
                 }
             }
 
@@ -449,16 +501,10 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    // SIGNALING SERVER
-    // ============================================================
-
     private static async Task StartSignalingServer()
     {
         if (_signalingServer != null)
-        {
             return;
-        }
 
         _serverCancellation =
             new CancellationTokenSource();
@@ -499,7 +545,9 @@ internal static class Program
             _serverCancellation.Token;
 
         _ = Task.Run(
-            () => SignalingAcceptLoop(token));
+            () =>
+                SignalingAcceptLoop(
+                    token));
     }
 
     private static async Task SignalingAcceptLoop(
@@ -511,9 +559,7 @@ internal static class Program
                 _signalingServer;
 
             if (server == null)
-            {
                 break;
-            }
 
             try
             {
@@ -522,7 +568,8 @@ internal static class Program
 
                 if (!context.Request.IsWebSocketRequest)
                 {
-                    context.Response.StatusCode = 400;
+                    context.Response.StatusCode =
+                        400;
 
                     byte[] response =
                         Encoding.UTF8.GetBytes(
@@ -539,7 +586,8 @@ internal static class Program
                 }
 
                 string path =
-                    context.Request.Url?.AbsolutePath ?? "";
+                    context.Request.Url?.AbsolutePath
+                    ?? "";
 
                 if (!path.Equals(
                         "/ws",
@@ -548,8 +596,11 @@ internal static class Program
                         "/ws/",
                         StringComparison.OrdinalIgnoreCase))
                 {
-                    context.Response.StatusCode = 404;
+                    context.Response.StatusCode =
+                        404;
+
                     context.Response.Close();
+
                     continue;
                 }
 
@@ -561,9 +612,10 @@ internal static class Program
                     wsContext.WebSocket;
 
                 _ = Task.Run(
-                    () => HandleSignalingClient(
-                        socket,
-                        context.Request.QueryString));
+                    () =>
+                        HandleSignalingClient(
+                            socket,
+                            context.Request.QueryString));
             }
             catch (HttpListenerException)
             {
@@ -600,7 +652,8 @@ internal static class Program
                 CreateError(
                     "Falta el parámetro room."));
 
-            await CloseSocket(socket);
+            await CloseSocket(
+                socket);
 
             return;
         }
@@ -630,7 +683,9 @@ internal static class Program
 
             if (suffix > 1000)
             {
-                await CloseSocket(socket);
+                await CloseSocket(
+                    socket);
+
                 return;
             }
         }
@@ -643,7 +698,8 @@ internal static class Program
             JsonSerializer.Serialize(
                 new
                 {
-                    type = "joined",
+                    type =
+                        "joined",
                     room,
                     client
                 }));
@@ -654,12 +710,14 @@ internal static class Program
             JsonSerializer.Serialize(
                 new
                 {
-                    type = "peer-joined",
+                    type =
+                        "peer-joined",
                     client
                 }));
 
         byte[] buffer =
-            new byte[64 * 1024];
+            new byte[
+                64 * 1024];
 
         try
         {
@@ -672,9 +730,7 @@ internal static class Program
                         buffer);
 
                 if (message == null)
-                {
                     break;
-                }
 
                 await Broadcast(
                     roomSockets,
@@ -699,7 +755,8 @@ internal static class Program
                 JsonSerializer.Serialize(
                     new
                     {
-                        type = "peer-left",
+                        type =
+                            "peer-left",
                         client
                     }));
 
@@ -710,13 +767,10 @@ internal static class Program
                     out _);
             }
 
-            await CloseSocket(socket);
+            await CloseSocket(
+                socket);
         }
     }
-
-    // ============================================================
-    // HOST SIGNALING CONNECTION
-    // ============================================================
 
     private static async Task ConnectHostToSignaling()
     {
@@ -745,12 +799,11 @@ internal static class Program
             _signalingWebSocket;
 
         if (socket == null)
-        {
             return;
-        }
 
         byte[] buffer =
-            new byte[64 * 1024];
+            new byte[
+                64 * 1024];
 
         while (socket.State ==
                WebSocketState.Open)
@@ -763,16 +816,15 @@ internal static class Program
                         buffer);
 
                 if (message == null)
-                {
                     break;
-                }
 
                 Debug.WriteLine(
                     "[SIGNALING RX] " +
                     message);
 
                 using JsonDocument doc =
-                    JsonDocument.Parse(message);
+                    JsonDocument.Parse(
+                        message);
 
                 if (!doc.RootElement.TryGetProperty(
                         "type",
@@ -782,15 +834,15 @@ internal static class Program
                 }
 
                 string type =
-                    typeElement.GetString() ?? "";
+                    typeElement.GetString()
+                    ?? "";
 
                 switch (type)
                 {
                     case "peer-joined":
 
                         SetStatus(
-                            "Cliente encontrado. " +
-                            "Negociando WebRTC...",
+                            "Cliente encontrado. Negociando WebRTC...",
                             Color.Orange);
 
                         await CreateAndSendOffer();
@@ -813,11 +865,11 @@ internal static class Program
 
                     case "peer-left":
 
-                        _isStreaming = false;
+                        _isStreaming =
+                            false;
 
                         SetStatus(
-                            "Cliente desconectado. " +
-                            "Esperando otro cliente...",
+                            "Cliente desconectado. Esperando otro cliente...",
                             Color.Orange);
 
                         break;
@@ -834,15 +886,12 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    // WEBRTC
-    // ============================================================
-
     private static async Task CreateAndSendOffer()
     {
         try
         {
-            _isStreaming = false;
+            _isStreaming =
+                false;
 
             if (_peerConnection != null)
             {
@@ -855,7 +904,8 @@ internal static class Program
                 {
                 }
 
-                _peerConnection = null;
+                _peerConnection =
+                    null;
             }
 
             if (_videoEncoder != null)
@@ -868,7 +918,8 @@ internal static class Program
                 {
                 }
 
-                _videoEncoder = null;
+                _videoEncoder =
+                    null;
             }
 
             _vp8Codec =
@@ -890,7 +941,8 @@ internal static class Program
                 };
 
             RTCPeerConnection peerConnection =
-                new RTCPeerConnection(config);
+                new RTCPeerConnection(
+                    config);
 
             _peerConnection =
                 peerConnection;
@@ -955,10 +1007,6 @@ internal static class Program
                     }
                 };
 
-            /*
-             * DataChannel creado por el HOST antes del offer.
-             * Android lo recibirá mediante onDataChannel.
-             */
             var dataChannel =
                 await peerConnection.createDataChannel(
                     "wow_controls");
@@ -978,28 +1026,17 @@ internal static class Program
                 peerConnection.createOffer();
 
             /*
-             * SIPSorcery 10.0.14:
-             * setLocalDescription devuelve
-             * SetDescriptionResultEnum.
+             * IMPORTANTE:
+             * En la versión de SIPSorcery que está
+             * utilizando este proyecto, setLocalDescription
+             * devuelve VOID.
              *
              * NO usar await.
+             * NO asignar el resultado a SetDescriptionResultEnum.
              */
-            SetDescriptionResultEnum localResult =
-    await peerConnection.setLocalDescription(
-        offer);
+            peerConnection.setLocalDescription(
+                offer);
 
-            if (localResult !=
-                SetDescriptionResultEnum.OK)
-            {
-                throw new InvalidOperationException(
-                    "setLocalDescription falló: " +
-                    localResult);
-            }
-
-            /*
-             * SDP es un objeto SIPSorcery.Net.SDP,
-             * no string.
-             */
             string sdp =
                 offer.sdp.ToString();
 
@@ -1012,14 +1049,16 @@ internal static class Program
                 JsonSerializer.Serialize(
                     new
                     {
-                        type = "offer",
-                        room = _roomId,
-                        sdp = base64Sdp
+                        type =
+                            "offer",
+                        room =
+                            _roomId,
+                        sdp =
+                            base64Sdp
                     }));
 
             SetStatus(
-                "Oferta WebRTC enviada. " +
-                "Esperando respuesta...",
+                "Oferta WebRTC enviada. Esperando respuesta...",
                 Color.Orange);
         }
         catch (Exception ex)
@@ -1034,10 +1073,6 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    // ANSWER
-    // ============================================================
-
     private static async Task ProcessAnswer(
         JsonElement root)
     {
@@ -1045,9 +1080,7 @@ internal static class Program
             _peerConnection;
 
         if (peerConnection == null)
-        {
             return;
-        }
 
         if (!root.TryGetProperty(
                 "sdp",
@@ -1057,9 +1090,11 @@ internal static class Program
         }
 
         string encodedSdp =
-            sdpElement.GetString() ?? "";
+            sdpElement.GetString()
+            ?? "";
 
-        if (string.IsNullOrWhiteSpace(encodedSdp))
+        if (string.IsNullOrWhiteSpace(
+                encodedSdp))
         {
             return;
         }
@@ -1084,20 +1119,17 @@ internal static class Program
             {
                 type =
                     RTCSdpType.answer,
-
                 sdp =
                     sdp
             };
 
         /*
-         * SIPSorcery 10.0.14:
-         * setRemoteDescription devuelve
-         * SetDescriptionResultEnum directamente.
-         *
-         * NO usar await.
+         * Esta llamada se mantiene como await porque
+         * la firma que está utilizando el proyecto para
+         * setRemoteDescription devuelve Task<...>.
          */
         SetDescriptionResultEnum result =
-            peerConnection.setRemoteDescription(
+            await peerConnection.setRemoteDescription(
                 remoteDescription);
 
         Debug.WriteLine(
@@ -1116,19 +1148,15 @@ internal static class Program
         }
 
         SetStatus(
-            "Respuesta recibida. " +
-            "WebRTC establecido.",
+            "Respuesta recibida. WebRTC establecido.",
             Color.LightGreen);
 
-        _isStreaming = true;
+        _isStreaming =
+            true;
 
         _ = Task.Run(
             VideoStreamingLoop);
     }
-
-    // ============================================================
-    // ICE LOCAL
-    // ============================================================
 
     private static void SendIceCandidate(
         RTCIceCandidate candidate)
@@ -1163,10 +1191,6 @@ internal static class Program
             });
     }
 
-    // ============================================================
-    // ICE REMOTO
-    // ============================================================
-
     private static void ProcessRemoteIceCandidate(
         JsonElement root)
     {
@@ -1174,9 +1198,7 @@ internal static class Program
             _peerConnection;
 
         if (peerConnection == null)
-        {
             return;
-        }
 
         try
         {
@@ -1188,14 +1210,17 @@ internal static class Program
             }
 
             string candidate =
-                candidateElement.GetString() ?? "";
+                candidateElement.GetString()
+                ?? "";
 
-            if (string.IsNullOrWhiteSpace(candidate))
+            if (string.IsNullOrWhiteSpace(
+                    candidate))
             {
                 return;
             }
 
-            string? sdpMid = null;
+            string? sdpMid =
+                null;
 
             if (root.TryGetProperty(
                     "sdpMid",
@@ -1216,36 +1241,23 @@ internal static class Program
                     indexElement.GetInt32();
 
                 if (index < 0)
-                {
                     index = 0;
-                }
 
-                if (index >
-                    ushort.MaxValue)
-                {
+                if (index > ushort.MaxValue)
                     index =
                         ushort.MaxValue;
-                }
 
                 sdpMLineIndex =
                     (ushort)index;
             }
 
-            /*
-             * SIPSorcery 10.0.14:
-             * addIceCandidate devuelve void.
-             *
-             * NO usar await.
-             */
             peerConnection.addIceCandidate(
                 new RTCIceCandidateInit
                 {
                     candidate =
                         candidate,
-
                     sdpMid =
                         sdpMid,
-
                     sdpMLineIndex =
                         sdpMLineIndex
                 });
@@ -1258,14 +1270,13 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    // VIDEO
-    // ============================================================
-
     private static async Task VideoStreamingLoop()
     {
-        const int width = 1280;
-        const int height = 720;
+        const int width =
+            1280;
+
+        const int height =
+            720;
 
         while (_isStreaming &&
                !_shuttingDown &&
@@ -1275,16 +1286,12 @@ internal static class Program
                 _wowProcess;
 
             if (process == null)
-            {
                 break;
-            }
 
             try
             {
                 if (process.HasExited)
-                {
                     break;
-                }
             }
             catch
             {
@@ -1300,7 +1307,8 @@ internal static class Program
                         PixelFormat.Format24bppRgb);
 
                 using Graphics g =
-                    Graphics.FromImage(bmp);
+                    Graphics.FromImage(
+                        bmp);
 
                 g.CopyFromScreen(
                     0,
@@ -1325,9 +1333,6 @@ internal static class Program
 
                 try
                 {
-                    int stride =
-                        Math.Abs(data.Stride);
-
                     int rowBytes =
                         bmp.Width * 3;
 
@@ -1367,10 +1372,12 @@ internal static class Program
                 }
                 finally
                 {
-                    bmp.UnlockBits(data);
+                    bmp.UnlockBits(
+                        data);
                 }
 
-                await Task.Delay(33);
+                await Task.Delay(
+                    33);
             }
             catch (Exception ex)
             {
@@ -1378,16 +1385,14 @@ internal static class Program
                     "VideoStreamingLoop: " +
                     ex.Message);
 
-                await Task.Delay(100);
+                await Task.Delay(
+                    100);
             }
         }
 
-        _isStreaming = false;
+        _isStreaming =
+            false;
     }
-
-    // ============================================================
-    // WEBRTC DATA CHANNEL
-    // ============================================================
 
     private static void HandleIncomingWebRtcControls(
         byte[] data)
@@ -1402,13 +1407,6 @@ internal static class Program
         byte type =
             data[0];
 
-        /*
-         * Keyboard:
-         *
-         * [0] = tipo
-         * [1] = acción
-         * [2] = tecla
-         */
         if (type == 0)
         {
             byte action =
@@ -1425,13 +1423,26 @@ internal static class Program
             uint virtualKey =
                 keyChar switch
                 {
-                    (byte)'W' => 0x57,
-                    (byte)'A' => 0x41,
-                    (byte)'S' => 0x53,
-                    (byte)'D' => 0x44,
-                    (byte)'M' => 0x4D,
-                    0x20 => 0x20,
-                    _ => keyChar
+                    (byte)'W' =>
+                        0x57,
+
+                    (byte)'A' =>
+                        0x41,
+
+                    (byte)'S' =>
+                        0x53,
+
+                    (byte)'D' =>
+                        0x44,
+
+                    (byte)'M' =>
+                        0x4D,
+
+                    0x20 =>
+                        0x20,
+
+                    _ =>
+                        keyChar
                 };
 
             PostMessage(
@@ -1444,14 +1455,6 @@ internal static class Program
             return;
         }
 
-        /*
-         * Mouse:
-         *
-         * [0] = tipo
-         * [1] = acción
-         * [2..5] = X
-         * [6..9] = Y
-         */
         if (type == 1 &&
             data.Length >= 10)
         {
@@ -1552,10 +1555,6 @@ internal static class Program
         }
     }
 
-    // ============================================================
-    // SIGNALING HELPERS
-    // ============================================================
-
     private static async Task SendSignalingMessage(
         string message)
     {
@@ -1575,7 +1574,8 @@ internal static class Program
                 message);
 
         await socket.SendAsync(
-            new ArraySegment<byte>(data),
+            new ArraySegment<byte>(
+                data),
             WebSocketMessageType.Text,
             true,
             CancellationToken.None);
@@ -1594,7 +1594,8 @@ internal static class Program
 
         foreach (var pair in clients)
         {
-            if (pair.Key == senderId)
+            if (pair.Key ==
+                senderId)
             {
                 continue;
             }
@@ -1714,20 +1715,19 @@ internal static class Program
         return JsonSerializer.Serialize(
             new
             {
-                type = "error",
+                type =
+                    "error",
                 message
             });
     }
-
-    // ============================================================
-    // UTILITIES
-    // ============================================================
 
     private static string GenerateRoomId()
     {
         return Guid.NewGuid()
             .ToString("N")
-            .Substring(0, 8)
+            .Substring(
+                0,
+                8)
             .ToUpperInvariant();
     }
 
@@ -1798,17 +1798,18 @@ internal static class Program
             if (form.InvokeRequired)
             {
                 form.BeginInvoke(
-                    (MethodInvoker)(() =>
-                    {
-                        if (_lblStatus != null)
+                    (MethodInvoker)(
+                        () =>
                         {
-                            _lblStatus.Text =
-                                text;
+                            if (_lblStatus != null)
+                            {
+                                _lblStatus.Text =
+                                    text;
 
-                            _lblStatus.ForeColor =
-                                color;
-                        }
-                    }));
+                                _lblStatus.ForeColor =
+                                    color;
+                            }
+                        }));
 
                 return;
             }
@@ -1831,22 +1832,21 @@ internal static class Program
             _mainForm;
 
         if (form == null)
-        {
             return;
-        }
 
         try
         {
             form.BeginInvoke(
-                (MethodInvoker)(() =>
-                {
-                    MessageBox.Show(
-                        form,
-                        message,
-                        "WoWStream",
-                        MessageBoxButtons.OK,
-                        MessageBoxIcon.Error);
-                }));
+                (MethodInvoker)(
+                    () =>
+                    {
+                        MessageBox.Show(
+                            form,
+                            message,
+                            "WoWStream",
+                            MessageBoxButtons.OK,
+                            MessageBoxIcon.Error);
+                    }));
         }
         catch
         {
@@ -1860,20 +1860,19 @@ internal static class Program
             _mainForm;
 
         if (form == null)
-        {
             return;
-        }
 
         try
         {
             if (form.InvokeRequired)
             {
                 form.BeginInvoke(
-                    (MethodInvoker)(() =>
-                    {
-                        SetUIBusyInternal(
-                            busy);
-                    }));
+                    (MethodInvoker)(
+                        () =>
+                        {
+                            SetUIBusyInternal(
+                                busy);
+                        }));
 
                 return;
             }
@@ -1890,43 +1889,32 @@ internal static class Program
         bool busy)
     {
         if (_btnStart != null)
-        {
             _btnStart.Enabled =
                 !busy;
-        }
 
         if (_btnBrowse != null)
-        {
             _btnBrowse.Enabled =
                 !busy;
-        }
 
         if (_txtWowPath != null)
-        {
             _txtWowPath.Enabled =
                 !busy;
-        }
 
         if (_txtConnectionId != null)
-        {
             _txtConnectionId.Enabled =
                 !busy;
-        }
     }
-
-    // ============================================================
-    // SHUTDOWN
-    // ============================================================
 
     private static async Task ShutdownAsync()
     {
         if (_shuttingDown)
-        {
             return;
-        }
 
-        _shuttingDown = true;
-        _isStreaming = false;
+        _shuttingDown =
+            true;
+
+        _isStreaming =
+            false;
 
         try
         {
@@ -2052,3 +2040,11 @@ internal static class Program
             IntPtr.Zero;
     }
 }
+
+La corrección clave respecto al error que acabas de mostrar es esta:
+
+var offer =
+    peerConnection.createOffer();
+
+peerConnection.setLocalDescription(
+    offer);
